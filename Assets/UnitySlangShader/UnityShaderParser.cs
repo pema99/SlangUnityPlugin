@@ -1350,9 +1350,9 @@ namespace UnityShaderParser.HLSL
                     Eat(TokenKind.LessThanToken);
                     var genVectorType = ParseNumericType().Kind;
                     Eat(TokenKind.CommaToken);
-                    int genDim = ParseIntegerLiteral();
+                    var genDim = ParseExpression((int)OperatorPrecedence.Comparison + 1);
                     var closeTok = Eat(TokenKind.GreaterThanToken);
-                    return new VectorTypeNode(Range(typeToken, closeTok)) { Kind = genVectorType, Dimension = genDim };
+                    return new GenericVectorTypeNode(Range(typeToken, closeTok)) { Kind = genVectorType, Dimension = genDim };
                 }
 
                 return new VectorTypeNode(Range(typeToken, typeToken)) { Kind = vectorType, Dimension = dimension };
@@ -1365,11 +1365,11 @@ namespace UnityShaderParser.HLSL
                     Eat(TokenKind.LessThanToken);
                     var genMatrixType = ParseNumericType().Kind;
                     Eat(TokenKind.CommaToken);
-                    int genDimX = ParseIntegerLiteral();
+                    var genDimX = ParseExpression((int)OperatorPrecedence.Comparison + 1);
                     Eat(TokenKind.CommaToken);
-                    int genDimY = ParseIntegerLiteral();
+                    var genDimY = ParseExpression((int)OperatorPrecedence.Comparison + 1);
                     var closeTok = Eat(TokenKind.GreaterThanToken);
-                    return new MatrixTypeNode(Range(typeToken, closeTok)) { Kind = genMatrixType, FirstDimension = genDimX, SecondDimension = genDimY };
+                    return new GenericMatrixTypeNode(Range(typeToken, closeTok)) { Kind = genMatrixType, FirstDimension = genDimX, SecondDimension = genDimY };
                 }
 
                 return new MatrixTypeNode(Range(typeToken, typeToken)) { Kind = matrixType, FirstDimension = dimX, SecondDimension = dimY };
@@ -2916,9 +2916,23 @@ namespace UnityShaderParser.HLSL
         {
             Emit($"{PrintingUtil.GetEnumName(node.Kind)}{node.FirstDimension}x{node.SecondDimension}");
         }
+        public override void VisitGenericMatrixTypeNode(GenericMatrixTypeNode node)
+        {
+            Emit($"matrix<{PrintingUtil.GetEnumName(node.Kind)}, ");
+            Visit(node.FirstDimension);
+            Emit(", ");
+            Visit(node.SecondDimension);
+            Emit(">");
+        }
         public override void VisitVectorTypeNode(VectorTypeNode node)
         {
             Emit($"{PrintingUtil.GetEnumName(node.Kind)}{node.Dimension}");
+        }
+        public override void VisitGenericVectorTypeNode(GenericVectorTypeNode node)
+        {
+            Emit($"vector<{PrintingUtil.GetEnumName(node.Kind)}, ");
+            Visit(node.Dimension);
+            Emit(">");
         }
         public override void VisitTechniqueNode(TechniqueNode node)
         {
@@ -4650,7 +4664,17 @@ namespace UnityShaderParser.HLSL
         public ScalarTypeNode(List<HLSLToken> tokens) : base(tokens) { }   
     }
 
-    public class MatrixTypeNode : NumericTypeNode
+    public abstract class BaseMatrixTypeNode : NumericTypeNode
+    {
+        public BaseMatrixTypeNode(List<HLSLToken> tokens) : base(tokens) { }
+    }
+
+    public abstract class BaseVectorTypeNode : NumericTypeNode
+    {
+        public BaseVectorTypeNode(List<HLSLToken> tokens) : base(tokens) { }
+    }
+
+    public class MatrixTypeNode : BaseMatrixTypeNode
     {
         public int FirstDimension { get; set; }
         public int SecondDimension { get; set; }
@@ -4664,7 +4688,21 @@ namespace UnityShaderParser.HLSL
         public MatrixTypeNode(List<HLSLToken> tokens) : base(tokens) { }   
     }
 
-    public class VectorTypeNode : NumericTypeNode
+    public class GenericMatrixTypeNode : BaseMatrixTypeNode
+    {
+        public ExpressionNode FirstDimension { get; set; }
+        public ExpressionNode SecondDimension { get; set; }
+
+        protected override IEnumerable<HLSLSyntaxNode> GetChildren =>
+            MergeChildren(Child(FirstDimension), Child(SecondDimension));
+
+        public override void Accept(HLSLSyntaxVisitor visitor) => visitor.VisitGenericMatrixTypeNode(this);
+        public override T Accept<T>(HLSLSyntaxVisitor<T> visitor) => visitor.VisitGenericMatrixTypeNode(this);
+
+        public GenericMatrixTypeNode(List<HLSLToken> tokens) : base(tokens) { }
+    }
+
+    public class VectorTypeNode : BaseVectorTypeNode
     {
         public int Dimension { get; set; }
 
@@ -4675,6 +4713,19 @@ namespace UnityShaderParser.HLSL
         public override T Accept<T>(HLSLSyntaxVisitor<T> visitor) => visitor.VisitVectorTypeNode(this);
 
         public VectorTypeNode(List<HLSLToken> tokens) : base(tokens) { }   
+    }
+
+    public class GenericVectorTypeNode : BaseVectorTypeNode
+    {
+        public ExpressionNode Dimension { get; set; }
+
+        protected override IEnumerable<HLSLSyntaxNode> GetChildren =>
+            Child(Dimension);
+
+        public override void Accept(HLSLSyntaxVisitor visitor) => visitor.VisitGenericVectorTypeNode(this);
+        public override T Accept<T>(HLSLSyntaxVisitor<T> visitor) => visitor.VisitGenericVectorTypeNode(this);
+
+        public GenericVectorTypeNode(List<HLSLToken> tokens) : base(tokens) { }
     }
 
     // This type mostly exists such that template can receive literal arguments.
@@ -6892,7 +6943,9 @@ namespace UnityShaderParser.HLSL
         public virtual void VisitStructTypeNode(StructTypeNode node) => DefaultVisit(node);
         public virtual void VisitScalarTypeNode(ScalarTypeNode node) => DefaultVisit(node);
         public virtual void VisitMatrixTypeNode(MatrixTypeNode node) => DefaultVisit(node);
+        public virtual void VisitGenericMatrixTypeNode(GenericMatrixTypeNode node) => DefaultVisit(node);
         public virtual void VisitVectorTypeNode(VectorTypeNode node) => DefaultVisit(node);
+        public virtual void VisitGenericVectorTypeNode(GenericVectorTypeNode node) => DefaultVisit(node);
         public virtual void VisitTechniqueNode(TechniqueNode node) => DefaultVisit(node);
         public virtual void VisitLiteralTemplateArgumentType(LiteralTemplateArgumentType node) => DefaultVisit(node);
         public virtual void VisitStatePropertyNode(StatePropertyNode node) => DefaultVisit(node);
@@ -7002,7 +7055,9 @@ namespace UnityShaderParser.HLSL
         public virtual TReturn VisitStructTypeNode(StructTypeNode node) => DefaultVisit(node);
         public virtual TReturn VisitScalarTypeNode(ScalarTypeNode node) => DefaultVisit(node);
         public virtual TReturn VisitMatrixTypeNode(MatrixTypeNode node) => DefaultVisit(node);
+        public virtual TReturn VisitGenericMatrixTypeNode(GenericMatrixTypeNode node) => DefaultVisit(node);
         public virtual TReturn VisitVectorTypeNode(VectorTypeNode node) => DefaultVisit(node);
+        public virtual TReturn VisitGenericVectorTypeNode(GenericVectorTypeNode node) => DefaultVisit(node);
         public virtual TReturn VisitTechniqueNode(TechniqueNode node) => DefaultVisit(node);
         public virtual TReturn VisitLiteralTemplateArgumentType(LiteralTemplateArgumentType node) => DefaultVisit(node);
         public virtual TReturn VisitStatePropertyNode(StatePropertyNode node) => DefaultVisit(node);

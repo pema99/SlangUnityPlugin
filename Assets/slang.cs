@@ -80,16 +80,54 @@ namespace UnitySlangShader.SlangAPI
         SLANG_SOURCE_LANGUAGE_COUNT_OF,
     };
 
+    public enum SlangSeverity : int
+    {
+        SLANG_SEVERITY_DISABLED = 0,
+        SLANG_SEVERITY_NOTE,        
+        SLANG_SEVERITY_WARNING,     
+        SLANG_SEVERITY_ERROR,       
+        SLANG_SEVERITY_FATAL,       
+        SLANG_SEVERITY_INTERNAL,    
+    }
+
+    public enum SlangStage : uint
+    {
+        SLANG_STAGE_NONE,
+        SLANG_STAGE_VERTEX,
+        SLANG_STAGE_HULL,
+        SLANG_STAGE_DOMAIN,
+        SLANG_STAGE_GEOMETRY,
+        SLANG_STAGE_FRAGMENT,
+        SLANG_STAGE_COMPUTE,
+        SLANG_STAGE_RAY_GENERATION,
+        SLANG_STAGE_INTERSECTION,
+        SLANG_STAGE_ANY_HIT,
+        SLANG_STAGE_CLOSEST_HIT,
+        SLANG_STAGE_MISS,
+        SLANG_STAGE_CALLABLE,
+        SLANG_STAGE_MESH,
+        SLANG_STAGE_AMPLIFICATION,
+        SLANG_STAGE_PIXEL = SLANG_STAGE_FRAGMENT,
+    }
+
+    public enum SlangMatrixLayoutMode : uint
+    {
+        SLANG_MATRIX_LAYOUT_MODE_UNKNOWN = 0,
+        SLANG_MATRIX_LAYOUT_ROW_MAJOR,
+        SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
+    }
+
     public sealed class CompileRequest : IDisposable
     {
-        private readonly IntPtr request;
-
+        #region Bindings
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern IntPtr spCreateCompileRequest(IntPtr session);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spDestroyCompileRequest(IntPtr request);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spSetCodeGenTarget(IntPtr request, SlangCompileTarget target);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern void spSetMatrixLayoutMode(IntPtr request, SlangMatrixLayoutMode mode);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spSetTargetFlags(IntPtr request, int targetIndex, SlangTargetFlags flags);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -112,13 +150,44 @@ namespace UnitySlangShader.SlangAPI
         private static extern IntPtr spGetCompileRequestCode(IntPtr request, [Out] out nuint size);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern IntPtr spGetDiagnosticOutput(IntPtr request);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern void spOverrideDiagnosticSeverity(IntPtr request, int messageID, SlangSeverity overrideSeverity);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern void spSetDiagnosticCallback(IntPtr request, [MarshalAs(UnmanagedType.FunctionPtr)] SlangDiagnosticCallback callback, IntPtr userData);
+        private delegate void SlangDiagnosticCallback(IntPtr message, IntPtr userData);
+        #endregion
+
+        private readonly IntPtr request = IntPtr.Zero;
+        private readonly List<string> diagnostics = new List<string>();
 
         public CompileRequest(IntPtr session)
         {
             request = spCreateCompileRequest(session);
+            spSetDiagnosticCallback(request, DiagnosticCallback, IntPtr.Zero);
+        }
+
+        private static readonly string[] ignoreDiagnosticsFrom = new string[]
+        {
+            "UnityCG.cginc", "HLSLSupport.cginc", "UnityShaderVariables.cginc"
+        };
+
+        private void DiagnosticCallback(IntPtr message, IntPtr userData)
+        {
+            string messageStr = Marshal.PtrToStringAnsi(message);
+            string[] splits = messageStr.Split(new string[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
+            bool ignored =
+                splits.Length > 0 &&
+                ignoreDiagnosticsFrom.Any(x => splits[0].Contains(x)) &&
+                !splits[0].Contains("error");
+            // Filter out warnings from builtin files
+            if (!ignored)
+            {
+                diagnostics.Add(messageStr);
+            }
         }
 
         public void SetCodeGenTarget(SlangCompileTarget target) => spSetCodeGenTarget(request, target);
+        public void SetMatrixLayoutMode(SlangMatrixLayoutMode mode) => spSetMatrixLayoutMode(request, mode);
         public void SetTargetFlags(SlangTargetFlags flags) => spSetTargetFlags(request, 0, flags);
         public void SetTargetLineDirectiveMode(SlangLineDirectiveMode mode) => spSetTargetLineDirectiveMode(request, 0, mode);
         public int AddTranslationUnit(SlangSourceLanguage language, string name) => spAddTranslationUnit(request, language, name);
@@ -126,8 +195,11 @@ namespace UnitySlangShader.SlangAPI
         public void AddTranslationUnitSourceString(int translationUnitIndex, string path, string source) => spAddTranslationUnitSourceString(request, translationUnitIndex, path, source);
         public void AddSearchPath(string searchDir) => spAddSearchPath(request, searchDir);
         public void AddPreprocessorDefine(string key, string val) => spAddPreprocessorDefine(request, key, val);
+        public void OverrideDiagnosticSeverity(int messageID, SlangSeverity overrideSeverity) => spOverrideDiagnosticSeverity(request, messageID, overrideSeverity);
 
         public SlangResult Compile() => spCompile(request);
+        public List<string> GetCollectedDiagnostics() => diagnostics;
+        public SlangReflection GetReflection() => new SlangReflection(request);
 
         public void ProcessCommandLineArguments(IEnumerable<string> args)
         {
@@ -141,15 +213,56 @@ namespace UnitySlangShader.SlangAPI
             return Marshal.PtrToStringAnsi(strPtr, (int)size);
         }
 
-        public string GetDiagnosticOutput()
-        {
-            IntPtr strPtr = spGetDiagnosticOutput(request);
-            return Marshal.PtrToStringAnsi(strPtr);
-        }
-
         public void Dispose()
         {
+            spSetDiagnosticCallback(request, null, IntPtr.Zero);
             spDestroyCompileRequest(request);
+        }
+    }
+
+    public sealed class SlangReflection
+    {
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr spGetReflection(IntPtr request);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern uint spReflection_getEntryPointCount(IntPtr reflection);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr spReflection_getEntryPointByIndex(IntPtr reflection, uint index);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr spReflection_findEntryPointByName(IntPtr reflection, [MarshalAs(UnmanagedType.LPStr)] string name);
+
+        private IntPtr reflection = IntPtr.Zero;
+
+        public SlangReflection(IntPtr request)
+        {
+            reflection = spGetReflection(request);
+        }
+
+        public uint GetEntryPointCount() => spReflection_getEntryPointCount(reflection);
+        public SlangReflectionEntryPoint GetEntryPointByIndex(uint index) => new SlangReflectionEntryPoint(spReflection_getEntryPointByIndex(reflection, index));
+        public SlangReflectionEntryPoint FindEntryPointByName(string name) => new SlangReflectionEntryPoint(spReflection_findEntryPointByName(reflection, name));
+    }
+
+    public sealed class SlangReflectionEntryPoint
+    {
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern SlangStage spReflectionEntryPoint_getStage(IntPtr entryPoint);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr spReflectionEntryPoint_getName(IntPtr entryPoint);
+
+        private IntPtr entryPoint = IntPtr.Zero;
+
+        public SlangReflectionEntryPoint(IntPtr entryPoint)
+        {
+            this.entryPoint = entryPoint;
+        }
+
+        public SlangStage GetStage() => spReflectionEntryPoint_getStage(entryPoint);
+
+        public string GetName()
+        {
+            IntPtr strPtr = spReflectionEntryPoint_getName(entryPoint);
+            return Marshal.PtrToStringAnsi(strPtr);
         }
     }
 

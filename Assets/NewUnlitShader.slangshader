@@ -41,10 +41,7 @@ Shader "Unlit/NewUnlitShader"
             {
                 // sample the texture
                 float4 col = tex2D(_MainTex, i.uv);
-
-
-                return diff_mandelbulb_0(0, 0, 0).xxxx;
-                //return 1.0 - col;
+                return 1.0 - col;
             }
             ENDCG
         }
