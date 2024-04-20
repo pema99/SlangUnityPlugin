@@ -1,0 +1,9 @@
+Library/
+Logs/
+obj/
+.vscode/
+.vs/
+Temp/
+Assembly-CSharp.csproj
+SlangPluginProject.sln
+UserSettings/
