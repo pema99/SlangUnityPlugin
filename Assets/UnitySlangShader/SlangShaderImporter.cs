@@ -324,8 +324,16 @@ namespace UnitySlangShader
         [SerializeField]
         public string GeneratedSourceCode;
 
+        [SerializeField]
+        public SlangShaderVariant[] GeneratedVariants;
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
+            if (GeneratedVariants == null || GeneratedVariants.Length == 0)
+            {
+                GeneratedVariants = new SlangShaderVariant[] { new SlangShaderVariant(Array.Empty<string>()) };
+            }
+
             string shaderSource = File.ReadAllText(ctx.assetPath);
 
             ShaderLabParserConfig config = new ShaderLabParserConfig

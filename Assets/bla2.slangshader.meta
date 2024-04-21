@@ -1,0 +1,48 @@
+fileFormatVersion: 2
+guid: 1352f54c0ac1e1e40a84516b5119d1bf
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 42453ca1b22731b429bc8c829622a175, type: 3}
+  GeneratedSourceCode: "Shader \"Unlit/NewUnlitShader\"\r\n{\r\n    Properties\r\n   
+    {\r\n        _MainTex (\"Texture\", 2D) = \"white\" {}\r\n    }\r\n    SubShader\r\n   
+    {\r\n        Pass\r\n        {\r\n            HLSLPROGRAM\n#pragma vertex vert\r\n#pragma
+    fragment frag\r\n#ifdef SLANG_HLSL_ENABLE_NVAPI\n#include \"nvHLSLExtns.h\"\n#endif\n#pragma
+    warning(disable: 3557)\n\n\n\ncbuffer UnityPerFrame\n{\n    float4 glstate_lightmodel_ambient;\r\nfloat4
+    unity_AmbientSky;\r\nfloat4 unity_AmbientEquator;\r\nfloat4 unity_AmbientGround;\r\nfloat4
+    unity_IndirectSpecColor;\r\nmatrix<float, int(4), int(4)> glstate_matrix_projection;\r\nmatrix<float,
+    int(4), int(4)> unity_MatrixV;\r\nmatrix<float, int(4), int(4)> unity_MatrixInvV;\r\nmatrix<float,
+    int(4), int(4)> unity_MatrixVP;\r\nint unity_StereoEyeIndex;\r\nfloat4 unity_ShadowColor;\r\n\n}\n\n\ncbuffer
+    UnityPerDraw\n{\n    matrix<float, int(4), int(4)> unity_ObjectToWorld;\r\nmatrix<float,
+    int(4), int(4)> unity_WorldToObject;\r\nfloat4 unity_LODFade;\r\nfloat4 unity_WorldTransformParams;\r\nfloat4
+    unity_RenderingLayer;\r\n\n}\n\n\ncbuffer UnityPerCamera\n{\n    float4 _Time;\r\nfloat4
+    _SinTime;\r\nfloat4 _CosTime;\r\nfloat4 unity_DeltaTime;\r\nfloat3 _WorldSpaceCameraPos;\r\nfloat4
+    _ProjectionParams;\r\nfloat4 _ScreenParams;\r\nfloat4 _ZBufferParams;\r\nfloat4
+    unity_OrthoParams;\r\n\n}\n\n\ncbuffer globalParams_0\n{\n    float4 unity_Lightmap_HDR;\r\nfloat4
+    unity_DynamicLightmap_HDR;\r\nfloat4 _MainTex_ST;\r\n\n}\nfloat4 UnityObjectToClipPos_0(float3
+    pos_0)\n{\n    return mul(unity_MatrixVP, mul(unity_ObjectToWorld, float4(pos_0,
+    1.0)));\n}\n\nfloat4 UnityObjectToClipPos_1(float4 pos_1)\n{\n    return UnityObjectToClipPos_0(pos_1.xyz);\n}\n\nstruct
+    v2f_0\n{\n    float2 uv_0 : TEXCOORD0;\n    float4 vertex_0 : SV_POSITION;\n};\n\nstruct
+    appdata_0\n{\n    float4 vertex_1 : POSITION;\n    float2 uv_1 : TEXCOORD0;\n};\n\nv2f_0
+    vert(appdata_0 v_0)\n{\n    v2f_0 o_0;\n    o_0.vertex_0 = UnityObjectToClipPos_1(v_0.vertex_1);\n   
+    o_0.uv_0 = v_0.uv_1.xy * _MainTex_ST.xy + _MainTex_ST.zw;\n    return o_0;\n}\n\nstruct
+    DiffPair_vectorx3Cfloatx2C3x3E_0\n{\n    float3 primal_0;\n    float3 differential_0;\n};\n\nDiffPair_vectorx3Cfloatx2C3x3E_0
+    _d_cos_vector_0(DiffPair_vectorx3Cfloatx2C3x3E_0 dpx_0)\n{\n    DiffPair_vectorx3Cfloatx2C3x3E_0
+    _S1 = { cos(dpx_0.primal_0), - sin(dpx_0.primal_0) * dpx_0.differential_0 };\n   
+    return _S1;\n}\n\nstruct DiffPair_vectorx3Cfloatx2C2x3E_0\n{\n    float2 primal_0;\n   
+    float2 differential_0;\n};\n\nDiffPair_vectorx3Cfloatx2C3x3E_0 s_fwd_cool_0(DiffPair_vectorx3Cfloatx2C2x3E_0
+    dpuv_0)\n{\n    DiffPair_vectorx3Cfloatx2C3x3E_0 _S2 = { _Time.y + (dpuv_0.primal_0
+    * 3.0).xyx + float3(0.0, 2.0, 4.0), (dpuv_0.differential_0 * 3.0).xyx };\n   
+    DiffPair_vectorx3Cfloatx2C3x3E_0 _S3 = _d_cos_vector_0(_S2);\n    DiffPair_vectorx3Cfloatx2C3x3E_0
+    _S4 = { 0.5 + 0.5 * _S3.primal_0, _S3.differential_0 * 0.5 };\n    return _S4;\n}\n\nfloat4
+    frag(v2f_0 i_0) : SV_TARGET\n{\n    DiffPair_vectorx3Cfloatx2C2x3E_0 _S5 = {
+    i_0.uv_0, float2(1.0, 0.0) };\n    return float4(s_fwd_cool_0(_S5).differential_0,
+    1.0);\n}\n\n\nENDHLSL\r\n        }\r\n    }\r\n}\r\n"
+  GeneratedVariants:
+  - Keywords: []
+  - Keywords:
+    - STEREO_INSTANCING_ON
