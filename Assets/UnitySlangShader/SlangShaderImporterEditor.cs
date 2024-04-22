@@ -11,12 +11,15 @@ namespace UnitySlangShader
     {
         private readonly string foldoutSourceID = $"{nameof(SlangShaderImporterEditor)}.foldoutSource";
         private readonly string foldoutGeneratedShaderID = $"{nameof(SlangShaderImporterEditor)}.foldoutGeneratedShader";
+        private readonly string foldoutVariantsID = $"{nameof(SlangShaderImporterEditor)}.foldoutVariants";
 
-        private Vector2 scrollPosition = Vector2.zero;
+        private Vector2 diagScrollPosition = Vector2.zero;
         private GUIStyle statusInfoStyle;
         private GUIStyle evenStyle;
         private GUIContent errorIconContent;
         private GUIContent warnIconContent;
+
+        private Vector2 variantScrollPosition = Vector2.zero;
 
         public override bool showImportedObject => false;
 
@@ -45,6 +48,21 @@ namespace UnitySlangShader
                 }
             }
 
+            bool foldoutVariants = SessionState.GetBool(foldoutVariantsID, false);
+            SessionState.SetBool(foldoutVariantsID, EditorGUILayout.Foldout(foldoutVariants, "Generated variants"));
+            if (foldoutVariants)
+            {
+                float height = Mathf.Min(importer.GeneratedVariants.Length * 20f + 40f, 150f);
+                variantScrollPosition = GUILayout.BeginScrollView(variantScrollPosition, EditorStyles.helpBox, GUILayout.MinHeight(height));
+                foreach (var variant in importer.GeneratedVariants)
+                {
+                    string name = string.Join(" ", variant.Keywords);
+                    if (name.Trim() == string.Empty) name = "<Empty variant>";
+                    EditorGUILayout.LabelField(name, EditorStyles.helpBox);
+                }
+                GUILayout.EndScrollView();
+            }
+
             DrawErrorList(importer.Diagnostics);
 
             base.ApplyRevertGUI();
@@ -64,7 +82,7 @@ namespace UnitySlangShader
 
             int n = diags.Length;
             float height = Mathf.Min(n * 20f + 40f, 150f);
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUI.skin.box, GUILayout.MinHeight(height));
+            diagScrollPosition = GUILayout.BeginScrollView(diagScrollPosition, GUI.skin.box, GUILayout.MinHeight(height));
 
             EditorGUIUtility.SetIconSize(new Vector2(16.0f, 16.0f));
             float lineHeight = statusInfoStyle.CalcHeight(errorIconContent, 100);

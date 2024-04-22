@@ -122,10 +122,17 @@ namespace UnitySlangShader
 
             private string filePath = string.Empty;
 
-            public ShaderLabSlangEditor(string filePath, string source, List<SLToken> tokens)
+            private SlangShaderVariant[] variantsToGenerate;
+            private HashSet<string> allKeywords;
+
+            public ShaderLabSlangEditor(string filePath, SlangShaderVariant[] variantsToGenerate, string source, List<SLToken> tokens)
                 : base(source, tokens)
             {
                 this.filePath = filePath;
+                this.variantsToGenerate = variantsToGenerate;
+
+                // Find the entire space of keywords we care about
+                allKeywords = variantsToGenerate.SelectMany(x => x.Keywords).ToHashSet();
 
                 // Delete all include blocks
                 foreach (var token in tokens)
@@ -196,6 +203,17 @@ namespace UnitySlangShader
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
                 var entryPoints = FindEntryPointPragmas(pragmas);
 
+                StringBuilder allVariants = new StringBuilder();
+                foreach (var variant in variantsToGenerate)
+                {
+                    allVariants.AppendLine(CompileVariant(fullCodeWithLineStart, variant.Keywords, entryPoints));
+                }
+
+                Edit(programBlock.Span, $"HLSLPROGRAM\n{allVariants.ToString()}\nENDHLSL");
+            }
+
+            private string CompileVariant(string fullCode, string[] keywords, List<(string stage, string entryName)> entryPoints)
+            {
                 using SlangSession session = new SlangSession();
                 using CompileRequest request = session.CreateCompileRequest();
 
@@ -206,6 +224,7 @@ namespace UnitySlangShader
 
                 request.AddSearchPath($"{EditorApplication.applicationContentsPath}/CGIncludes");
 
+                // Base defines
                 request.AddPreprocessorDefine("SHADER_API_D3D11", "1"); // TODO: Base these on the current state of the editor
                 request.AddPreprocessorDefine("UNITY_COMPILER_DXC", "1");
                 request.AddPreprocessorDefine("UNITY_UNIFIED_SHADER_PRECISION_MODEL", "1");
@@ -215,6 +234,12 @@ namespace UnitySlangShader
                 request.AddPreprocessorDefine("min16float3", "float3");
                 request.AddPreprocessorDefine("min16float4", "float4");
 
+                // Define keywords
+                foreach (var keyword in keywords)
+                {
+                    request.AddPreprocessorDefine(keyword, "1");
+                }
+
                 request.ProcessCommandLineArguments(new string[] { "-no-mangle", "-no-hlsl-binding", "-no-hlsl-pack-constant-buffer-elements" });
 
                 request.OverrideDiagnosticSeverity(15205, SlangSeverity.SLANG_SEVERITY_DISABLED); // undefined identifier in preprocessor expression will evaluate to 0
@@ -223,7 +248,7 @@ namespace UnitySlangShader
                 request.OverrideDiagnosticSeverity(39019, SlangSeverity.SLANG_SEVERITY_DISABLED); // implicitly global shader parameter with no uniform keyword
 
                 int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_HLSL, "Main Translation Unit");
-                request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCodeWithLineStart);
+                request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCode);
 
                 // Handle #pragma style entry point syntax, to avoid confusing the user.
                 foreach (var entryPoint in entryPoints)
@@ -244,11 +269,11 @@ namespace UnitySlangShader
                 }
 
                 SlangResult result = request.Compile();
+
+                StringBuilder codeBuilder = new StringBuilder();
+                AppendKeywordCombinationDirective(codeBuilder, keywords);
                 if (result.IsOk)
                 {
-                    StringBuilder codeBuilder = new StringBuilder();
-                    codeBuilder.Append("HLSLPROGRAM\n");
-
                     // Get the name of each entry point, annotate them as Unity pragmas
                     SlangReflection refl = request.GetReflection();
                     uint entryPointCount = refl.GetEntryPointCount();
@@ -283,14 +308,31 @@ namespace UnitySlangShader
 
                     // Replace the code
                     codeBuilder.Append(processedHlslCode);
-                    codeBuilder.Append("\nENDHLSL");
-                    Edit(programBlock.Span, codeBuilder.ToString());
                 }
-                else
-                {
-                    Edit(programBlock.Span, "Color(1,0,1,1)");
-                }
+                codeBuilder.AppendLine("#endif");
+
+                // TODO: Handle error case (make pink shader)
+
                 Diagnostics.AddRange(request.GetCollectedDiagnostics());
+
+                return codeBuilder.ToString();
+            }
+
+            private void AppendKeywordCombinationDirective(StringBuilder sb, string[] keywords)
+            {
+                HashSet<string> remaining = new HashSet<string>(allKeywords);
+                remaining.ExceptWith(keywords);
+
+                sb.Append("#if ");
+                foreach (string keyword in keywords)
+                {
+                    sb.Append($"defined({keyword}) && ");
+                }
+                foreach (string keyword in remaining)
+                {
+                    sb.Append($"!defined({keyword}) && ");
+                }
+                sb.AppendLine("1");
             }
         }
 
@@ -324,7 +366,7 @@ namespace UnitySlangShader
                 LogDiagnostic(newDiags, parserDiag.Text, parserDiag.Span.FileName, parserDiag.Location.Line, parserDiag.Kind.HasFlag(DiagnosticFlags.Warning));
             }
 
-            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, shaderSource, shaderNode.Tokens);
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, GeneratedVariants, shaderSource, shaderNode.Tokens);
             GeneratedSourceCode = editor.ApplyEdits(shaderNode);
             foreach (var slangDiag in editor.Diagnostics)
             {

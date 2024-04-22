@@ -13,9 +13,13 @@ ShaderVariantCollection:
       variants:
       - keywords: 
         passType: 0
+      - keywords: STEREO_INSTANCING_ON
+        passType: 0
   - first: {fileID: 106, guid: 0000000000000000f000000000000000, type: 0}
     second:
       variants:
+      - keywords: STEREO_INSTANCING_ON _SUNDISK_SIMPLE
+        passType: 0
       - keywords: _SUNDISK_SIMPLE
         passType: 0
   - first: {fileID: 9000, guid: 0000000000000000f000000000000000, type: 0}
@@ -58,8 +62,27 @@ ShaderVariantCollection:
       variants:
       - keywords: 
         passType: 0
+  - first: {fileID: 15304, guid: 0000000000000000f000000000000000, type: 0}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+  - first: {fileID: 15307, guid: 0000000000000000f000000000000000, type: 0}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
   - first: {fileID: -725307286687186854, guid: fb1d636cb546d4c4bb8380fb88470817, type: 3}
     second:
       variants:
       - keywords: 
+        passType: 0
+      - keywords: STEREO_INSTANCING_ON
+        passType: 0
+  - first: {fileID: 4800000, guid: abced06ccd167444796e14ad62eae168, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: STEREO_INSTANCING_ON
         passType: 0

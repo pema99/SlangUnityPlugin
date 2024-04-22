@@ -42,20 +42,10 @@ ScriptedImporter:
     o_0.uv_0 = v_0.uv_1.xy * _MainTex_ST.xy + _MainTex_ST.zw;\n    return o_0;\n}\n\nfloat4
     tex2D_0(Texture2D<float4 > x_t_0, SamplerState x_s_0, float2 v_1)\n{\n    return
     x_t_0.Sample(x_s_0, v_1);\n}\n\nfloat4 frag(v2f_0 i_0) : SV_TARGET\n{\n    return
-    tex2D_0(_MainTex, sampler__MainTex, i_0.uv_0);\n}\n\n\nENDHLSL\r\n        }\r\n   
-    }\r\n}\r\n"
+    1.0 - tex2D_0(_MainTex, sampler__MainTex, i_0.uv_0);\n}\n\n\nENDHLSL\r\n       
+    }\r\n    }\r\n}\r\n"
   GeneratedVariants:
   - Keywords: []
-  Diagnostics:
-  - Text: Shader 'Assets/NewUnlitShader.slangshader' uses #pragma syntax for specifying
-      entry point 'vert'. Please consider annotating the entry point with the [shader("vertex")]
-      attribute instead.
-    File: TODO
-    Line: 1337
-    Warning: 1
-  - Text: Shader 'Assets/NewUnlitShader.slangshader' uses #pragma syntax for specifying
-      entry point 'frag'. Please consider annotating the entry point with the [shader("fragment")]
-      attribute instead.
-    File: TODO
-    Line: 1337
-    Warning: 1
+  - Keywords:
+    - STEREO_INSTANCING_ON
+  Diagnostics: []
