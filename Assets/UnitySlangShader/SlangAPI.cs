@@ -139,6 +139,8 @@ namespace UnitySlangShader.SlangAPI
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spAddTranslationUnitSourceString(IntPtr request, int translationUnitIndex, [MarshalAs(UnmanagedType.LPStr)] string path, [MarshalAs(UnmanagedType.LPStr)] string source);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern int spAddEntryPoint(IntPtr request, int translationUnitIndex, [MarshalAs(UnmanagedType.LPStr)] string name, SlangStage stage);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spAddSearchPath(IntPtr request, [MarshalAs(UnmanagedType.LPStr)] string searchDir);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spAddPreprocessorDefine(IntPtr request, [MarshalAs(UnmanagedType.LPStr)] string key, [MarshalAs(UnmanagedType.LPStr)] string val);
@@ -193,6 +195,7 @@ namespace UnitySlangShader.SlangAPI
         public int AddTranslationUnit(SlangSourceLanguage language, string name) => spAddTranslationUnit(request, language, name);
         public void AddTranslationUnitSourceFile(int translationUnitIndex, string path) => spAddTranslationUnitSourceFile(request, translationUnitIndex, path);
         public void AddTranslationUnitSourceString(int translationUnitIndex, string path, string source) => spAddTranslationUnitSourceString(request, translationUnitIndex, path, source);
+        public int AddEntryPoint(int translationUnitIndex, string name, SlangStage stage) => spAddEntryPoint(request, translationUnitIndex, name, stage);
         public void AddSearchPath(string searchDir) => spAddSearchPath(request, searchDir);
         public void AddPreprocessorDefine(string key, string val) => spAddPreprocessorDefine(request, key, val);
         public void OverrideDiagnosticSeverity(int messageID, SlangSeverity overrideSeverity) => spOverrideDiagnosticSeverity(request, messageID, overrideSeverity);

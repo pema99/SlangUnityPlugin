@@ -1,0 +1,61 @@
+fileFormatVersion: 2
+guid: fb1d636cb546d4c4bb8380fb88470817
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 42453ca1b22731b429bc8c829622a175, type: 3}
+  GeneratedSourceCode: "Shader \"Unlit/NewUnlitShader\"\r\n{\r\n    Properties\r\n   
+    {\r\n        _MainTex (\"Texture\", 2D) = \"white\" {}\r\n    }\r\n    SubShader\r\n   
+    {\r\n        Tags { \"RenderType\"=\"Opaque\" }\r\n        LOD 100\r\n\r\n       
+    Pass\r\n        {\r\n            HLSLPROGRAM\n#pragma vertex vert\r\n#pragma
+    fragment frag\r\n#ifdef SLANG_HLSL_ENABLE_NVAPI\n#include \"nvHLSLExtns.h\"\n#endif\n#pragma
+    warning(disable: 3557)\n\nstruct SLANG_ParameterGroup_UnityPerFrame_0\n{\n   
+    float4 glstate_lightmodel_ambient;\n    float4 unity_AmbientSky;\n    float4
+    unity_AmbientEquator;\n    float4 unity_AmbientGround;\n    float4 unity_IndirectSpecColor;\n   
+    matrix<float,int(4),int(4)>  glstate_matrix_projection;\n    matrix<float,int(4),int(4)> 
+    unity_MatrixV;\n    matrix<float,int(4),int(4)>  unity_MatrixInvV;\n    matrix<float,int(4),int(4)> 
+    unity_MatrixVP;\n    int unity_StereoEyeIndex;\n    float4 unity_ShadowColor;\n};\n\ncbuffer
+    UnityPerFrame\n{\n    float4 glstate_lightmodel_ambient;\n    float4 unity_AmbientSky;\n   
+    float4 unity_AmbientEquator;\n    float4 unity_AmbientGround;\n    float4 unity_IndirectSpecColor;\n   
+    matrix<float,int(4),int(4)>  glstate_matrix_projection;\n    matrix<float,int(4),int(4)> 
+    unity_MatrixV;\n    matrix<float,int(4),int(4)>  unity_MatrixInvV;\n    matrix<float,int(4),int(4)> 
+    unity_MatrixVP;\n    int unity_StereoEyeIndex;\n    float4 unity_ShadowColor;\n}\nstruct
+    SLANG_ParameterGroup_UnityPerDraw_0\n{\n    matrix<float,int(4),int(4)>  unity_ObjectToWorld;\n   
+    matrix<float,int(4),int(4)>  unity_WorldToObject;\n    float4 unity_LODFade;\n   
+    float4 unity_WorldTransformParams;\n    float4 unity_RenderingLayer;\n};\n\ncbuffer
+    UnityPerDraw\n{\n    matrix<float,int(4),int(4)>  unity_ObjectToWorld;\n    matrix<float,int(4),int(4)> 
+    unity_WorldToObject;\n    float4 unity_LODFade;\n    float4 unity_WorldTransformParams;\n   
+    float4 unity_RenderingLayer;\n}\nTexture2D<float4 > _MainTex;\n\nSamplerState
+    sampler__MainTex;\n\nstruct GlobalParams_0\n{\n    float4 unity_Lightmap_HDR;\n   
+    float4 unity_DynamicLightmap_HDR;\n    float4 _MainTex_ST;\n};\n\ncbuffer globalParams_0\n{\n   
+    float4 unity_Lightmap_HDR;\n    float4 unity_DynamicLightmap_HDR;\n    float4
+    _MainTex_ST;\n}\nfloat4 UnityObjectToClipPos_0(float3 pos_0)\n{\n    return mul(unity_MatrixVP,
+    mul(unity_ObjectToWorld, float4(pos_0, 1.0)));\n}\n\nfloat4 UnityObjectToClipPos_1(float4
+    pos_1)\n{\n    return UnityObjectToClipPos_0(pos_1.xyz);\n}\n\nstruct v2f_0\n{\n   
+    float2 uv_0 : TEXCOORD0;\n    float4 vertex_0 : SV_POSITION;\n};\n\nstruct appdata_0\n{\n   
+    float4 vertex_1 : POSITION;\n    float2 uv_1 : TEXCOORD0;\n};\n\nv2f_0 vert(appdata_0
+    v_0)\n{\n    v2f_0 o_0;\n    o_0.vertex_0 = UnityObjectToClipPos_1(v_0.vertex_1);\n   
+    o_0.uv_0 = v_0.uv_1.xy * _MainTex_ST.xy + _MainTex_ST.zw;\n    return o_0;\n}\n\nfloat4
+    tex2D_0(Texture2D<float4 > x_t_0, SamplerState x_s_0, float2 v_1)\n{\n    return
+    x_t_0.Sample(x_s_0, v_1);\n}\n\nfloat4 frag(v2f_0 i_0) : SV_TARGET\n{\n    return
+    tex2D_0(_MainTex, sampler__MainTex, i_0.uv_0);\n}\n\n\nENDHLSL\r\n        }\r\n   
+    }\r\n}\r\n"
+  GeneratedVariants:
+  - Keywords: []
+  Diagnostics:
+  - Text: Shader 'Assets/NewUnlitShader.slangshader' uses #pragma syntax for specifying
+      entry point 'vert'. Please consider annotating the entry point with the [shader("vertex")]
+      attribute instead.
+    File: TODO
+    Line: 1337
+    Warning: 1
+  - Text: Shader 'Assets/NewUnlitShader.slangshader' uses #pragma syntax for specifying
+      entry point 'frag'. Please consider annotating the entry point with the [shader("fragment")]
+      attribute instead.
+    File: TODO
+    Line: 1337
+    Warning: 1

@@ -16,75 +16,30 @@ using HLSLTokenKind = UnityShaderParser.HLSL.TokenKind;
 using SLToken = UnityShaderParser.Common.Token<UnityShaderParser.ShaderLab.TokenKind>;
 using HLSLToken = UnityShaderParser.Common.Token<UnityShaderParser.HLSL.TokenKind>;
 using System.Linq;
+using UnityEditor.Rendering;
 
 namespace UnitySlangShader
 {
+    [Serializable]
+    public struct SlangShaderDiagnostic
+    {
+        public string Text;
+        public string File;
+        public int Line;
+        public bool Warning;
+    }
+
     [ScriptedImporter(1, "slangshader")]
     public class SlangShaderImporter : ScriptedImporter
     {
         // Makes edits to HLSL code resulting from Slang compilation to make it unity-compatible
         private class HLSLSlangEditor : HLSLEditor
         {
-            // Unpacking cbuffer structs
-            private Dictionary<string, StructTypeNode> structDefinitions = new Dictionary<string, StructTypeNode>();
-            private HashSet<string> unpackedStructFields = new HashSet<string>();
-
             // Renaming samplers
             public HashSet<string> BrokenTextureFields = new HashSet<string>();
 
             public HLSLSlangEditor(string source, List<HLSLToken> tokens)
                 : base(source, tokens) { }
-
-            public override void VisitStructDefinitionNode(StructDefinitionNode node)
-            {
-                // Take note of struct definitions, we'll need them later
-                string structName = node.StructType.Name.GetName();
-                structDefinitions[structName] = node.StructType;
-
-                base.VisitStructDefinitionNode(node);
-            }
-
-            public override void VisitConstantBufferNode(ConstantBufferNode node)
-            {
-                // If we find a constant buffer, unpack any struct withins
-                foreach (VariableDeclarationStatementNode decl in node.Declarations)
-                {
-                    if (decl.Kind is NamedTypeNode named)
-                    {
-                        string typeName = named.GetName();
-                        if (structDefinitions.ContainsKey(typeName))
-                        {
-                            // Unpack the struct fields
-                            StringBuilder unpackedStructCode = new StringBuilder();
-                            foreach (VariableDeclarationStatementNode structField in structDefinitions[typeName].Fields)
-                            {
-                                unpackedStructCode.Append(structField.GetPrettyPrintedCode());
-                            }
-                            Edit(decl, unpackedStructCode.ToString());
-
-                            // Delete the original struct definition
-                            if (decl.Declarators.Count > 0 && !unpackedStructFields.Contains(decl.Declarators[0].Name))
-                            {
-                                Edit(structDefinitions[typeName].Parent, "");
-                                unpackedStructFields.Add(decl.Declarators[0].Name);
-                            }
-                        }
-                    }
-                }
-
-                base.VisitConstantBufferNode(node);
-            }
-
-            public override void VisitFieldAccessExpressionNode(FieldAccessExpressionNode node)
-            {
-                // Replace accesses to deleted structs with accesses to globals
-                if (node.Target is NamedExpressionNode named && unpackedStructFields.Contains(named.GetName()))
-                {
-                    Edit(node, node.Name);
-                }
-
-                base.VisitFieldAccessExpressionNode(node);
-            }
 
             public override void VisitVariableDeclarationStatementNode(VariableDeclarationStatementNode node)
             {
@@ -197,17 +152,15 @@ namespace UnitySlangShader
             private List<string[]> ExtractPragmasFromCode(string fullCode)
             {
                 List<string[]> pragmas = new List<string[]>();
-
-                var matches = Regex.Matches(fullCode, @"#pragma (.+)$");
+                var matches = Regex.Matches(fullCode, @"#pragma (.+)$", RegexOptions.Multiline);
                 foreach (Match pragma in matches)
                 {
                     string trimmed = pragma.Groups[0].Value.Trim();
                     if (trimmed == string.Empty)
                         continue;
 
-                    // TODO: Strip from source
                     string[] parts = trimmed.Split(' ');
-                    pragmas.Add(parts);
+                    pragmas.Add(parts.Skip(1).ToArray());
                 }
 
                 return pragmas;
@@ -241,7 +194,7 @@ namespace UnitySlangShader
             {
                 string fullCodeWithLineStart = $"#line {programBlock.Span.Start.Line - 1}\n{programBlock.FullCode}";
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
-                var entryPoints = FindEntryPointPragmas(pragmas); // TODO: Optional way of specifying entries
+                var entryPoints = FindEntryPointPragmas(pragmas);
 
                 using SlangSession session = new SlangSession();
                 using CompileRequest request = session.CreateCompileRequest();
@@ -262,7 +215,7 @@ namespace UnitySlangShader
                 request.AddPreprocessorDefine("min16float3", "float3");
                 request.AddPreprocessorDefine("min16float4", "float4");
 
-                request.ProcessCommandLineArguments(new string[] { "-no-mangle", "-no-hlsl-binding" });
+                request.ProcessCommandLineArguments(new string[] { "-no-mangle", "-no-hlsl-binding", "-no-hlsl-pack-constant-buffer-elements" });
 
                 request.OverrideDiagnosticSeverity(15205, SlangSeverity.SLANG_SEVERITY_DISABLED); // undefined identifier in preprocessor expression will evaluate to 0
                 request.OverrideDiagnosticSeverity(15400, SlangSeverity.SLANG_SEVERITY_DISABLED); // redefinition of macro
@@ -270,7 +223,25 @@ namespace UnitySlangShader
 
                 int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_HLSL, "Main Translation Unit");
                 request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCodeWithLineStart);
-                
+
+                // Handle #pragma style entry point syntax, to avoid confusing the user.
+                foreach (var entryPoint in entryPoints)
+                {
+                    SlangStage stage = SlangStage.SLANG_STAGE_NONE;
+                    switch (entryPoint.stage)
+                    {
+                        case "fragment": stage = SlangStage.SLANG_STAGE_FRAGMENT; break;
+                        case "vertex": stage = SlangStage.SLANG_STAGE_VERTEX; break;
+                        case "geometry": stage = SlangStage.SLANG_STAGE_GEOMETRY; break;
+                        case "hull": stage = SlangStage.SLANG_STAGE_HULL; break;
+                        case "domain": stage = SlangStage.SLANG_STAGE_DOMAIN; break;
+                        default: break;
+                    }
+                    Diagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
+                        $"Please consider annotating the entry point with the [shader(\"{entryPoint.stage}\")] attribute instead.");
+                    request.AddEntryPoint(translationUnitIndex, entryPoint.entryName, stage);
+                }
+
                 SlangResult result = request.Compile();
                 if (result.IsOk)
                 {
@@ -312,10 +283,11 @@ namespace UnitySlangShader
                     // Replace the code
                     codeBuilder.Append(processedHlslCode);
                     codeBuilder.Append("\nENDHLSL");
-                    Edit(programBlock.Span, codeBuilder.ToString()); // TODO: Indent
+                    Edit(programBlock.Span, codeBuilder.ToString());
                 }
                 else
                 {
+                    Edit(programBlock.Span, "Color(1,0,1,1)");
                     Diagnostics.AddRange(request.GetCollectedDiagnostics());
                 }
             }
@@ -327,8 +299,13 @@ namespace UnitySlangShader
         [SerializeField]
         public SlangShaderVariant[] GeneratedVariants;
 
+        [SerializeField]
+        public SlangShaderDiagnostic[] Diagnostics;
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
+            var newDiags = new List<SlangShaderDiagnostic>();
+
             if (GeneratedVariants == null || GeneratedVariants.Length == 0)
             {
                 GeneratedVariants = new SlangShaderVariant[] { new SlangShaderVariant(Array.Empty<string>()) };
@@ -343,47 +320,52 @@ namespace UnitySlangShader
             var shaderNode = ShaderParser.ParseUnityShader(shaderSource, config, out var diagnostics);
             foreach (var parserDiag in diagnostics)
             {
-                if (parserDiag.Kind.HasFlag(DiagnosticFlags.Warning))
-                {
-                    ctx.LogImportWarning(parserDiag.ToString());
-                }
-                else
-                {
-                    ctx.LogImportError(parserDiag.ToString());
-                }
+                LogDiagnostic(newDiags, parserDiag.Text, parserDiag.Span.FileName, parserDiag.Location.Line, parserDiag.Kind.HasFlag(DiagnosticFlags.Warning));
             }
 
             ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, shaderSource, shaderNode.Tokens);
             GeneratedSourceCode = editor.ApplyEdits(shaderNode);
             foreach (var slangDiag in editor.Diagnostics)
             {
-                if (slangDiag.Contains("error"))
+                string errorLine = slangDiag.Split(new string[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries).First();
+                var match = Regex.Match(errorLine, @"(.*)\(([0-9]+)\): (.*)$");
+                if (match.Success)
                 {
-                    ctx.LogImportError(slangDiag);
+                    LogDiagnostic(newDiags, match.Groups[3].Value, match.Groups[1].Value, int.Parse(match.Groups[2].Value), !slangDiag.Contains("error"));
                 }
                 else
                 {
-                    ctx.LogImportWarning(slangDiag);
+                    LogDiagnostic(newDiags, errorLine, "", 0, !slangDiag.Contains("error"));
                 }
             }
 
             var shaderAsset = ShaderUtil.CreateShaderAsset(ctx, GeneratedSourceCode, true);
 
-            if (ShaderUtil.ShaderHasError(shaderAsset))
+            var messages = ShaderUtil.GetShaderMessages(shaderAsset);
+            if (messages.Length > 0)
             {
-                var errors = ShaderUtil.GetShaderMessages(shaderAsset);
-                foreach (var error in errors)
+                foreach (var message in messages)
                 {
-                    ctx.LogImportError(error.message + $" on line {error.line} in {ctx.assetPath}");
+                    LogDiagnostic(newDiags, message.message, message.file, message.line, message.severity == ShaderCompilerMessageSeverity.Warning);
                 }
             }
-            else
+
+            Diagnostics = newDiags.ToArray();
+            foreach (var diag in Diagnostics)
             {
-                ShaderUtil.ClearShaderMessages(shaderAsset);
+                if (!diag.Warning)
+                {
+                    ctx.LogImportError($"{ctx.assetPath}({diag.Line}): {diag.Text}");
+                }
             }
 
             ctx.AddObjectToAsset("Generated shader", shaderAsset);
             ctx.SetMainObject(shaderAsset);
+        }
+
+        private static void LogDiagnostic(List<SlangShaderDiagnostic> diags, string message, string file, int line, bool warning)
+        {
+            diags.Add(new SlangShaderDiagnostic { Text = message, File = file, Line = line, Warning = warning });
         }
     }
 }

@@ -7146,7 +7146,7 @@ namespace UnityShaderParser.Common
             {
                 throw new Exception($"Error at line {line}, column {column} during {Stage}: {err}");
             }
-            diagnostics.Add(new Diagnostic(new SourceLocation(line, column, position), kind, this.Stage, err));
+            diagnostics.Add(new Diagnostic(GetCurrentSpan(), kind, this.Stage, err));
         }
 
         protected void StartCurrentSpan()
@@ -7416,7 +7416,7 @@ namespace UnityShaderParser.Common
             }
 
             // Log the diagnostic
-            diagnostics.Add(new Diagnostic(anchorSpan.Start, kind, Stage, msg));
+            diagnostics.Add(new Diagnostic(anchorSpan, kind, Stage, msg));
         }
 
         protected void Error(DiagnosticFlags kind, string msg, SourceSpan span)
@@ -7740,14 +7740,15 @@ namespace UnityShaderParser.Common
 
     public struct Diagnostic
     {
-        public SourceLocation Location { get; }
+        public SourceLocation Location => Span.Start;
+        public SourceSpan Span { get; }
         public DiagnosticFlags Kind { get; }
         public ParserStage Stage { get; }
         public string Text { get; }
 
-        public Diagnostic(SourceLocation location, DiagnosticFlags kind, ParserStage stage, string text)
+        public Diagnostic(SourceSpan span, DiagnosticFlags kind, ParserStage stage, string text)
         {
-            Location = location;
+            Span = span;
             Kind = kind;
             Stage = stage;
             Text = text;
@@ -7755,7 +7756,7 @@ namespace UnityShaderParser.Common
 
         public override string ToString()
         {
-            return $"Error during {Stage}, line {Location.Line}, col {Location.Column}: {Text}";
+            return $"Error during {Stage}, file '{Span.FileName}', line {Location.Line}, col {Location.Column}: {Text}";
         }
     }
 
