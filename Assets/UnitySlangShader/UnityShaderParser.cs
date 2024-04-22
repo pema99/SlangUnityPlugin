@@ -29,8 +29,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System.Collections.Generic;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -7860,13 +7860,14 @@ namespace UnityShaderParser.Common
         {
             foreach (var child in GetChildren)
             {
+                if (child == null) continue;
                 child.parent = (TSelf)this;
                 child.ComputeParents();
             }
         }
 
         // Public API
-        public List<TSelf> Children => GetChildren.ToList();
+        public List<TSelf> Children => GetChildren.Where(x => x != null).ToList();
         public TSelf Parent => parent;
         public abstract SourceSpan Span { get; }
         public abstract SourceSpan OriginalSpan { get; }
@@ -9001,6 +9002,8 @@ namespace UnityShaderParser.ShaderLab
                 if (next.Kind == TokenKind.CloseBraceToken)
                     break;
 
+                int lastPosition = position;
+
                 switch (next.Kind)
                 {
                     case TokenKind.PassKeyword: passes.Add(ParseCodePass()); break;
@@ -9011,6 +9014,13 @@ namespace UnityShaderParser.ShaderLab
                         ParseCommandsAndIncludeBlocksIfPresent(commands, includeBlocks);
                         SetIncludes(includeBlocks);
                         break;
+                }
+
+                // We got stuck, so error and try to recover to something sensible
+                if (position == lastPosition)
+                {
+                    Error("a valid ShaderLab command or program block", next);
+                    RecoverTo(x => x == TokenKind.CloseBraceToken || commandSyncTokens.Contains(x), false);
                 }
             }
 
