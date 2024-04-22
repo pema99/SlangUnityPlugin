@@ -220,6 +220,7 @@ namespace UnitySlangShader
                 request.OverrideDiagnosticSeverity(15205, SlangSeverity.SLANG_SEVERITY_DISABLED); // undefined identifier in preprocessor expression will evaluate to 0
                 request.OverrideDiagnosticSeverity(15400, SlangSeverity.SLANG_SEVERITY_DISABLED); // redefinition of macro
                 request.OverrideDiagnosticSeverity(15601, SlangSeverity.SLANG_SEVERITY_DISABLED); // ignoring unknown directive
+                request.OverrideDiagnosticSeverity(39019, SlangSeverity.SLANG_SEVERITY_DISABLED); // implicitly global shader parameter with no uniform keyword
 
                 int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_HLSL, "Main Translation Unit");
                 request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCodeWithLineStart);
@@ -288,8 +289,8 @@ namespace UnitySlangShader
                 else
                 {
                     Edit(programBlock.Span, "Color(1,0,1,1)");
-                    Diagnostics.AddRange(request.GetCollectedDiagnostics());
                 }
+                Diagnostics.AddRange(request.GetCollectedDiagnostics());
             }
         }
 
