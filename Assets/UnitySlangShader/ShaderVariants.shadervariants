@@ -97,3 +97,20 @@ ShaderVariantCollection:
         passType: 0
       - keywords: STEREO_INSTANCING_ON
         passType: 0
+  - first: {fileID: 4800000, guid: 944d4d84c0cc6f14d83223cc521d0a62, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+  - first: {fileID: -725307286687186854, guid: 1743a03c18335eb4ebe9313eef102176, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: STEREO_INSTANCING_ON
+        passType: 0
+  - first: {fileID: -725307286687186854, guid: 7091078d425557c4c8fe9aa0da8c260f, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
