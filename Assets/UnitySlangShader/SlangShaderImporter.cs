@@ -17,6 +17,8 @@ using SLToken = UnityShaderParser.Common.Token<UnityShaderParser.ShaderLab.Token
 using HLSLToken = UnityShaderParser.Common.Token<UnityShaderParser.HLSL.TokenKind>;
 using System.Linq;
 using UnityEditor.Rendering;
+using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
 namespace UnitySlangShader
 {
@@ -118,7 +120,7 @@ namespace UnitySlangShader
         // Traverses ShaderLab code and replaces Slang blocks with HLSL blocks
         private class ShaderLabSlangEditor : ShaderLabEditor
         {
-            public List<string> Diagnostics = new List<string>();
+            public string[] Diagnostics = new string[0];
 
             private string filePath = string.Empty;
 
@@ -203,17 +205,30 @@ namespace UnitySlangShader
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
                 var entryPoints = FindEntryPointPragmas(pragmas);
 
-                StringBuilder allVariants = new StringBuilder();
-                foreach (var variant in variantsToGenerate)
+                string[] perThreadResult = new string[variantsToGenerate.Length];
+                List<string>[] perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
+                // TODO: Not quite sure if this is thread safe. Seems to work but needs more testing.
+                //Parallel.For(0, variantsToGenerate.Length, variantIdx =>
+                for (int variantIdx = 0; variantIdx < variantsToGenerate.Length; variantIdx++)
                 {
-                    allVariants.AppendLine(CompileVariant(fullCodeWithLineStart, variant.Keywords, entryPoints));
+                    perThreadResult[variantIdx] = CompileVariant(
+                        fullCodeWithLineStart,
+                        variantsToGenerate[variantIdx].Keywords,
+                        entryPoints,
+                        out perThreadDiagnostic[variantIdx]);
                 }
+                //);
 
-                Edit(programBlock.Span, $"HLSLPROGRAM\n{allVariants.ToString()}\nENDHLSL");
+                string allVariants = string.Join("\n", perThreadResult);
+                Diagnostics = perThreadDiagnostic.SelectMany(x => x).Distinct().ToArray();
+
+                Edit(programBlock.Span, $"HLSLPROGRAM\n{allVariants}\nENDHLSL");
             }
 
-            private string CompileVariant(string fullCode, string[] keywords, List<(string stage, string entryName)> entryPoints)
+            private string CompileVariant(string fullCode, string[] keywords, List<(string stage, string entryName)> entryPoints, out List<string> outDiagnostics)
             {
+                outDiagnostics = new List<string>();
+
                 using SlangSession session = new SlangSession();
                 using CompileRequest request = session.CreateCompileRequest();
 
@@ -263,7 +278,7 @@ namespace UnitySlangShader
                         case "domain": stage = SlangStage.SLANG_STAGE_DOMAIN; break;
                         default: break;
                     }
-                    Diagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
+                    outDiagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
                         $"Please consider annotating the entry point with the [shader(\"{entryPoint.stage}\")] attribute instead.");
                     request.AddEntryPoint(translationUnitIndex, entryPoint.entryName, stage);
                 }
@@ -313,7 +328,7 @@ namespace UnitySlangShader
 
                 // TODO: Handle error case (make pink shader)
 
-                Diagnostics.AddRange(request.GetCollectedDiagnostics());
+                outDiagnostics.AddRange(request.GetCollectedDiagnostics());
 
                 return codeBuilder.ToString();
             }
