@@ -35,7 +35,7 @@ namespace UnitySlangShader
 
         private static Dictionary<string, HashSet<SlangShaderVariant>> GetSlangShaderVariants()
         {
-            string basePath = "Assets/.SlangShaderCache";
+            string basePath = "Assets/SlangShaderCache";
             string svcPath = $"{basePath}/ShaderVariants.shadervariants";
             if (!Directory.Exists(basePath))
                 Directory.CreateDirectory(basePath);
