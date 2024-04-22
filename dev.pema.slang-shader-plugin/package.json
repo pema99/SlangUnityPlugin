@@ -1,0 +1,11 @@
+{
+  "name": "dev.pema.slang-shader-plugin",
+  "version": "0.1.0",
+  "displayName": "Slang Shader Plugin",
+  "description": "A plugin for creating shaders using the Slang shading language.",
+  "author": {
+    "name": "Pema Malling",
+    "email": "pemamalling@gmail.com",
+    "url": "https://pema.dev"
+  }
+}

@@ -6,24 +6,13 @@ ShaderVariantCollection:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: NewShaderVariants
+  m_Name: ShaderVariants
   m_Shaders:
   - first: {fileID: 66, guid: 0000000000000000f000000000000000, type: 0}
     second:
       variants:
       - keywords: 
         passType: 0
-  - first: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
-    second:
-      variants:
-      - keywords: DIRECTIONAL LIGHTPROBE_SH _EMISSION
-        passType: 4
-      - keywords: DIRECTIONAL
-        passType: 5
-      - keywords: 
-        passType: 8
-      - keywords: SHADOWS_DEPTH
-        passType: 8
   - first: {fileID: 106, guid: 0000000000000000f000000000000000, type: 0}
     second:
       variants:
@@ -69,7 +58,7 @@ ShaderVariantCollection:
       variants:
       - keywords: 
         passType: 0
-  - first: {fileID: 4800000, guid: a8a345c72f52aa14b9f6694b86c66854, type: 3}
+  - first: {fileID: -725307286687186854, guid: fb1d636cb546d4c4bb8380fb88470817, type: 3}
     second:
       variants:
       - keywords: 

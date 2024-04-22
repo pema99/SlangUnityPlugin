@@ -39,7 +39,7 @@ namespace UnitySlangShader
         {
             public override void Action(int instanceId, string pathName, string resourceFile)
             {
-                var template = AssetDatabase.LoadAssetAtPath<TextAsset>($"Assets/UnitySlangShader/SlangShaderTemplates/{resourceFile}");
+                var template = AssetDatabase.LoadAssetAtPath<TextAsset>($"Packages/dev.pema.slang-shader-plugin/Editor/SlangShaderTemplates/{resourceFile}");
                 string code = template.text;
 
                 string name = Path.GetFileNameWithoutExtension(pathName);
