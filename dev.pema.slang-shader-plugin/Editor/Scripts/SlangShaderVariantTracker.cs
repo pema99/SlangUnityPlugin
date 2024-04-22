@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using System.Reflection;
 using System.Linq;
+using System.IO;
 
 namespace UnitySlangShader
 {
@@ -34,7 +35,11 @@ namespace UnitySlangShader
 
         private static Dictionary<string, HashSet<SlangShaderVariant>> GetSlangShaderVariants()
         {
-            string svcPath = "Assets/UnitySlangShader/ShaderVariants.shadervariants";
+            string basePath = "Assets/.SlangShaderCache";
+            string svcPath = $"{basePath}/ShaderVariants.shadervariants";
+            if (!Directory.Exists(basePath))
+                Directory.CreateDirectory(basePath);
+
             saveCurrentShaderVariantCollectionWrapper(svcPath);
             var svc = AssetDatabase.LoadAssetAtPath<ShaderVariantCollection>(svcPath);
 
