@@ -360,6 +360,19 @@ namespace UnitySlangShader
         [SerializeField]
         public SlangShaderDiagnostic[] Diagnostics;
 
+        public static string GenerateSourceCodeWithoutImport(string assetPath, SlangShaderVariant[] variantsToGenerate)
+        {
+            string shaderSource = File.ReadAllText(assetPath);
+            ShaderLabParserConfig config = new ShaderLabParserConfig
+            {
+                ParseEmbeddedHLSL = false
+            };
+            var shaderNode = ShaderParser.ParseUnityShader(shaderSource, config, out _);    
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, variantsToGenerate, shaderSource, shaderNode.Tokens);
+            string result = editor.ApplyEdits(shaderNode);
+            return result;
+        }
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
             var newDiags = new List<SlangShaderDiagnostic>();
