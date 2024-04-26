@@ -40,8 +40,8 @@ namespace UnitySlangShader
             EditorApplication.update -= Update;
             EditorApplication.update += Update;
 
-            //EditorSceneManager.sceneOpened -= OpenScene;
-            //EditorSceneManager.sceneOpened += OpenScene;
+            EditorSceneManager.sceneOpened -= OpenScene;
+            EditorSceneManager.sceneOpened += OpenScene;
         }
 
         private static Dictionary<string, HashSet<SlangShaderVariant>> GetAllSlangShaderVariants()
@@ -186,8 +186,11 @@ namespace UnitySlangShader
             return result;
         }
 
-        /*private static void OpenScene(Scene scene, OpenSceneMode mode)
+        private static void OpenScene(Scene scene, OpenSceneMode mode)
         {
+            if (!BuildPipeline.isBuildingPlayer)
+                return;
+
             // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
             // Maybe try vanilla System.IO calls
             var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
@@ -210,6 +213,6 @@ namespace UnitySlangShader
                     importer.SaveAndReimport(); 
                 }
             }
-        }*/
+        }
     }
 }
