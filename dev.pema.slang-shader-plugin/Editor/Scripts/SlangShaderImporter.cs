@@ -199,14 +199,39 @@ namespace UnitySlangShader
                 return entryPoints;
             }
 
+            // Which pragmas to passthrough into the final shader?
+            private string GetPassthroughPragmas(List<string[]> pragmas)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                foreach (string[] pragma in pragmas)
+                {
+                    if (pragma.Length == 0)
+                        continue;
+
+                    if (pragma[0].StartsWith("multi_compile") ||
+                        pragma[0] == "shader_feature" ||
+                        pragma[0] == "skip_variants")
+                    {
+                        sb.AppendLine($"#pragma {string.Join(" ", pragma)}");
+                    }
+                }
+
+                return sb.ToString();
+            }
+
             public void HandleProgramBlock(HLSLProgramBlock programBlock)
             {
                 string fullCodeWithLineStart = $"#line {programBlock.Span.Start.Line - 1}\n{programBlock.FullCode}";
+
+                // Extract pragmas and entry points specified with old syntax
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
                 var entryPoints = FindEntryPointPragmas(pragmas);
 
-                string[] perThreadResult = new string[variantsToGenerate.Length];
-                List<string>[] perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
+                // Compile each variant
+                var perThreadResult = new string[variantsToGenerate.Length];
+                var perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
+                var perThreadEntryPoints = new HashSet<(string stage, string entryName)>[variantsToGenerate.Length];
                 // TODO: Not quite sure if this is thread safe. Seems to work but needs more testing.
                 //Parallel.For(0, variantsToGenerate.Length, variantIdx =>
                 for (int variantIdx = 0; variantIdx < variantsToGenerate.Length; variantIdx++)
@@ -215,19 +240,47 @@ namespace UnitySlangShader
                         fullCodeWithLineStart,
                         variantsToGenerate[variantIdx].Keywords,
                         entryPoints,
-                        out perThreadDiagnostic[variantIdx]);
+                        out perThreadDiagnostic[variantIdx],
+                        out perThreadEntryPoints[variantIdx]);
                 }
                 //);
 
+                // Gather the result of each compilation
                 string allVariants = string.Join("\n", perThreadResult);
                 Diagnostics = perThreadDiagnostic.SelectMany(x => x).Distinct().ToArray();
 
-                Edit(programBlock.Span, $"HLSLPROGRAM\n{allVariants}\nENDHLSL");
+                // Find all entry points from each variant, make pragmas from them
+                var allEntryPoints = new HashSet<(string stage, string entryName)>();
+                foreach (var variantEntryPoints in perThreadEntryPoints)
+                {
+                    allEntryPoints.UnionWith(variantEntryPoints);
+                }
+                string entryPointPragmas = $"{string.Join("\n", allEntryPoints.Select(x => $"#pragma {x.stage} {x.entryName}"))}\n";
+
+                // Some pragmas like multi_compile should just be passed through directly
+                string passthroughPragmas = GetPassthroughPragmas(pragmas);
+
+                // In case a request variant is missing or failed to compile, provide a fallback variant 
+                StringBuilder fallbackVariantBuilder = new StringBuilder();
+                fallbackVariantBuilder.AppendLine("#ifndef SLANG_SHADER_VARIANT_FOUND");
+                foreach ((string stage, string entryName) in allEntryPoints)
+                {
+                    fallbackVariantBuilder.AppendLine($"void {entryName}() {{}}");
+                }
+                fallbackVariantBuilder.AppendLine("#endif");
+
+                Edit(programBlock.Span, $"HLSLPROGRAM\n{entryPointPragmas}{passthroughPragmas}{allVariants}{fallbackVariantBuilder}\nENDHLSL");
             }
 
-            private string CompileVariant(string fullCode, string[] keywords, List<(string stage, string entryName)> entryPoints, out List<string> outDiagnostics)
+            private string CompileVariant(
+                string fullCode,
+                string[] keywords,
+                List<(string stage, string entryName)> knownEntryPoints,
+                out List<string> diagnostics,
+                out HashSet<(string stage, string entryName)> outEntryPoints)
             {
-                outDiagnostics = new List<string>();
+                diagnostics = new List<string>();
+                outEntryPoints = new HashSet<(string stage, string entryName)>();
 
                 using SlangSession session = new SlangSession();
                 using CompileRequest request = session.CreateCompileRequest();
@@ -266,7 +319,7 @@ namespace UnitySlangShader
                 request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCode);
 
                 // Handle #pragma style entry point syntax, to avoid confusing the user.
-                foreach (var entryPoint in entryPoints)
+                foreach (var entryPoint in knownEntryPoints)
                 {
                     SlangStage stage = SlangStage.SLANG_STAGE_NONE;
                     switch (entryPoint.stage)
@@ -278,7 +331,7 @@ namespace UnitySlangShader
                         case "domain": stage = SlangStage.SLANG_STAGE_DOMAIN; break;
                         default: break;
                     }
-                    outDiagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
+                    diagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
                         $"Please consider annotating the entry point with the [shader(\"{entryPoint.stage}\")] attribute instead.");
                     request.AddEntryPoint(translationUnitIndex, entryPoint.entryName, stage);
                 }
@@ -289,6 +342,8 @@ namespace UnitySlangShader
                 AppendKeywordCombinationDirective(codeBuilder, keywords);
                 if (result.IsOk)
                 {
+                    codeBuilder.AppendLine("#define SLANG_SHADER_VARIANT_FOUND 1");
+
                     // Get the name of each entry point, annotate them as Unity pragmas
                     SlangReflection refl = request.GetReflection();
                     uint entryPointCount = refl.GetEntryPointCount();
@@ -300,12 +355,12 @@ namespace UnitySlangShader
 
                         switch (stage)
                         {
-                            case SlangStage.SLANG_STAGE_VERTEX: codeBuilder.AppendLine($"#pragma vertex {name}"); break;
-                            case SlangStage.SLANG_STAGE_HULL: codeBuilder.AppendLine($"#pragma hull {name}"); break;
-                            case SlangStage.SLANG_STAGE_DOMAIN: codeBuilder.AppendLine($"#pragma domain {name}"); break;
-                            case SlangStage.SLANG_STAGE_GEOMETRY: codeBuilder.AppendLine($"#pragma geometry {name}"); break;
-                            case SlangStage.SLANG_STAGE_FRAGMENT: codeBuilder.AppendLine($"#pragma fragment {name}"); break;
-                            case SlangStage.SLANG_STAGE_COMPUTE: codeBuilder.AppendLine($"#pragma kernel {name}"); break;
+                            case SlangStage.SLANG_STAGE_VERTEX: outEntryPoints.Add(("vertex", name)); break;
+                            case SlangStage.SLANG_STAGE_HULL: outEntryPoints.Add(("hull", name)); break;
+                            case SlangStage.SLANG_STAGE_DOMAIN: outEntryPoints.Add(("domain", name)); break;
+                            case SlangStage.SLANG_STAGE_GEOMETRY: outEntryPoints.Add(("geometry", name)); break;
+                            case SlangStage.SLANG_STAGE_FRAGMENT: outEntryPoints.Add(("fragment", name)); break;
+                            case SlangStage.SLANG_STAGE_COMPUTE: outEntryPoints.Add(("kernel", name)); break;
                             default: break;
                         }
                     }
@@ -313,8 +368,12 @@ namespace UnitySlangShader
                     // Get the output code
                     string rawHlslCode = request.GetCompileRequestedCode();
 
-                    // Strip the #pragma pack_matrix directive from it - we don't need it
-                    rawHlslCode = rawHlslCode.Replace("#pragma pack_matrix(column_major)\n", "");
+                    // TODO: Optimize
+                    // Strip some stuff Slang emit's which we don't care about
+                    rawHlslCode = rawHlslCode
+                        .Replace("#pragma pack_matrix(column_major)\n", "")
+                        .Replace("#ifdef SLANG_HLSL_ENABLE_NVAPI\n#include \"nvHLSLExtns.h\"\n#endif\n", "")
+                        .Replace("#pragma warning(disable: 3557)\n", "");
 
                     // Apply some semantic post processing to it
                     var decls = ShaderParser.ParseTopLevelDeclarations(rawHlslCode);
@@ -326,9 +385,7 @@ namespace UnitySlangShader
                 }
                 codeBuilder.AppendLine("#endif");
 
-                // TODO: Handle error case (make pink shader)
-
-                outDiagnostics.AddRange(request.GetCollectedDiagnostics());
+                diagnostics.AddRange(request.GetCollectedDiagnostics());
 
                 return codeBuilder.ToString();
             }
