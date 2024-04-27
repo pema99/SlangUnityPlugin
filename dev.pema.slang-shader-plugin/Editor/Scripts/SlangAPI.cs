@@ -153,6 +153,10 @@ namespace UnitySlangShader.SlangAPI
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern IntPtr spGetDiagnosticOutput(IntPtr request);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern int spGetDependencyFileCount(IntPtr request);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr spGetDependencyFilePath(IntPtr request, int index);
+        [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spOverrideDiagnosticSeverity(IntPtr request, int messageID, SlangSeverity overrideSeverity);
         [DllImport("slang", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern void spSetDiagnosticCallback(IntPtr request, [MarshalAs(UnmanagedType.FunctionPtr)] SlangDiagnosticCallback callback, IntPtr userData);
@@ -214,6 +218,17 @@ namespace UnitySlangShader.SlangAPI
         {
             IntPtr strPtr = spGetCompileRequestCode(request, out nuint size);
             return Marshal.PtrToStringAnsi(strPtr, (int)size);
+        }
+
+        public string[] GetDependencyFiles()
+        {
+            int count = spGetDependencyFileCount(request);
+            string[] result = new string[count];
+            for (int i = 0; i < count; i++)
+            {
+                result[i] = Marshal.PtrToStringAnsi(spGetDependencyFilePath(request, i));
+            }
+            return result;
         }
 
         public void Dispose()

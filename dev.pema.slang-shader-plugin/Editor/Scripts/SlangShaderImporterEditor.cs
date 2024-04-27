@@ -73,6 +73,8 @@ namespace UnitySlangShader
             if (diags == null)
                 diags = new SlangShaderDiagnostic[0];
 
+            diags = diags.OrderBy(x => x.Warning ? 1 : 0).ThenBy(x => x.File).ThenBy(x => x.Line).ToArray();
+
             if (statusInfoStyle == null) statusInfoStyle = new GUIStyle("CN StatusInfo");
             if (errorIconContent == null) errorIconContent = EditorGUIUtility.IconContent("console.erroricon");
             if (warnIconContent == null) warnIconContent = EditorGUIUtility.IconContent("console.warnicon");
@@ -88,7 +90,7 @@ namespace UnitySlangShader
             float lineHeight = statusInfoStyle.CalcHeight(errorIconContent, 100);
 
             Event e = Event.current;
-
+            int errorListID = GUIUtility.GetControlID(nameof(SlangShaderImporterEditor).GetHashCode(), FocusType.Passive);
             for (int i = 0; i < n; ++i)
             {
                 Rect r = EditorGUILayout.GetControlRect(false, lineHeight);
@@ -97,6 +99,18 @@ namespace UnitySlangShader
                 bool warn = diags[i].Warning;
                 string fileName = diags[i].File;
                 int line = diags[i].Line;
+
+                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
+                {
+                    GUIUtility.keyboardControl = errorListID;
+                    if (e.clickCount == 2)
+                    {
+                        Object asset = string.IsNullOrEmpty(fileName) ? null : AssetDatabase.LoadMainAssetAtPath(fileName);
+                        AssetDatabase.OpenAsset(asset, line);
+                        GUIUtility.ExitGUI();
+                    }
+                    e.Use();
+                }
 
                 // background
                 if (e.type == EventType.Repaint)

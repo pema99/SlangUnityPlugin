@@ -122,6 +122,7 @@ namespace UnitySlangShader
         private class ShaderLabSlangEditor : ShaderLabEditor
         {
             public string[] Diagnostics = new string[0];
+            public string[] DependencyFiles = new string[0];
 
             private string filePath = string.Empty;
 
@@ -230,26 +231,31 @@ namespace UnitySlangShader
                 var entryPoints = FindEntryPointPragmas(pragmas);
                 Dictionary<string, string> predefinedDirectives = GetPredefinedDirectives();
                 string cgIncludePath = $"{EditorApplication.applicationContentsPath}/CGIncludes";
+                string basePath = Directory.GetParent(Application.dataPath).FullName;
+                string[] includePaths = new string[] { cgIncludePath, basePath };
 
                 // Compile each variant
                 var perThreadResult = new string[variantsToGenerate.Length];
                 var perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
                 var perThreadEntryPoints = new HashSet<(string stage, string entryName)>[variantsToGenerate.Length];
+                var perThreadDependencyFiles = new string[variantsToGenerate.Length][];
                 Parallel.For(0, variantsToGenerate.Length, variantIdx =>
                 {
                     perThreadResult[variantIdx] = CompileVariant(
                         fullCodeWithLineStart,
-                        cgIncludePath,
+                        includePaths,
                         predefinedDirectives,
                         variantsToGenerate[variantIdx].Keywords,
                         entryPoints,
                         out perThreadDiagnostic[variantIdx],
-                        out perThreadEntryPoints[variantIdx]);
+                        out perThreadEntryPoints[variantIdx],
+                        out perThreadDependencyFiles[variantIdx]);
                 });
 
                 // Gather the result of each compilation
                 string allVariants = string.Join("\n", perThreadResult);
                 Diagnostics = perThreadDiagnostic.SelectMany(x => x).Distinct().ToArray();
+                DependencyFiles = perThreadDependencyFiles.SelectMany(x => x).Distinct().ToArray();
 
                 // Find all entry points from each variant, make pragmas from them
                 var allEntryPoints = new HashSet<(string stage, string entryName)>();
@@ -276,15 +282,17 @@ namespace UnitySlangShader
 
             private string CompileVariant(
                 string fullCode,
-                string cgIncludePath,
+                string[] includePaths,
                 Dictionary<string, string> predefinedDirectives,
                 HashSet<string> keywords,
                 List<(string stage, string entryName)> knownEntryPoints,
                 out List<string> diagnostics,
-                out HashSet<(string stage, string entryName)> outEntryPoints)
+                out HashSet<(string stage, string entryName)> outEntryPoints,
+                out string[] dependencyFiles)
             {
                 diagnostics = new List<string>();
                 outEntryPoints = new HashSet<(string stage, string entryName)>();
+                dependencyFiles = new string[0];
 
                 using SlangSession session = new SlangSession();
                 using CompileRequest request = session.CreateCompileRequest();
@@ -294,7 +302,10 @@ namespace UnitySlangShader
                 request.SetTargetFlags(SlangTargetFlags.SLANG_TARGET_FLAG_GENERATE_WHOLE_PROGRAM);
                 request.SetTargetLineDirectiveMode(SlangLineDirectiveMode.SLANG_LINE_DIRECTIVE_MODE_NONE);
 
-                request.AddSearchPath(cgIncludePath);
+                foreach (string includePath in includePaths)
+                {
+                    request.AddSearchPath(includePath);
+                }
 
                 // Define user keywords
                 foreach (var keyword in keywords)
@@ -364,6 +375,8 @@ namespace UnitySlangShader
                             default: break;
                         }
                     }
+
+                    dependencyFiles = request.GetDependencyFiles();
 
                     // Get the output code
                     string rawHlslCode = request.GetCompileRequestedCode();
@@ -551,6 +564,11 @@ namespace UnitySlangShader
                 {
                     LogDiagnostic(newDiags, errorLine, "", 0, !slangDiag.Contains("error"));
                 }
+            }
+
+            foreach (string dependencyFile in editor.DependencyFiles)
+            {
+                ctx.DependsOnSourceAsset(dependencyFile);
             }
 
             var shaderAsset = ShaderUtil.CreateShaderAsset(ctx, GeneratedSourceCode, true);
