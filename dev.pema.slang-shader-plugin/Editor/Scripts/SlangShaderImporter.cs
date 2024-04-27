@@ -325,6 +325,7 @@ namespace UnitySlangShader
                 request.OverrideDiagnosticSeverity(15400, SlangSeverity.SLANG_SEVERITY_DISABLED); // redefinition of macro
                 request.OverrideDiagnosticSeverity(15601, SlangSeverity.SLANG_SEVERITY_DISABLED); // ignoring unknown directive
                 request.OverrideDiagnosticSeverity(39019, SlangSeverity.SLANG_SEVERITY_DISABLED); // implicitly global shader parameter with no uniform keyword
+                request.OverrideDiagnosticSeverity(30056, SlangSeverity.SLANG_SEVERITY_DISABLED); // non-short-circuiting ternary
 
                 int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_HLSL, "Main Translation Unit");
                 request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCode);
@@ -456,6 +457,13 @@ namespace UnitySlangShader
                 directives.Add("min16float2", "float2");
                 directives.Add("min16float3", "float3");
                 directives.Add("min16float4", "float4");
+                for (int i = 0; i < 4; i++)
+                {
+                    for (int j = 0; j < 4; j++)
+                    {
+                        directives.Add($"min16float{i + 1}x{j + 1}", $"float{i + 1}x{j + 1}");
+                    }
+                }
 
                 // Platform defines
                 (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword();
@@ -558,7 +566,8 @@ namespace UnitySlangShader
                 var match = Regex.Match(errorLine, @"(.*)\(([0-9]+)\): (.*)$");
                 if (match.Success)
                 {
-                    LogDiagnostic(newDiags, match.Groups[3].Value, match.Groups[1].Value, int.Parse(match.Groups[2].Value), !slangDiag.Contains("error"));
+                    if (!match.Groups[3].Value.StartsWith("note"))
+                        LogDiagnostic(newDiags, match.Groups[3].Value, match.Groups[1].Value, int.Parse(match.Groups[2].Value), !slangDiag.Contains("error"));
                 }
                 else
                 {
