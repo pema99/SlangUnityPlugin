@@ -19,6 +19,7 @@ using System.Linq;
 using UnityEditor.Rendering;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
+using UnityEngine.Rendering;
 
 namespace UnitySlangShader
 {
@@ -224,26 +225,27 @@ namespace UnitySlangShader
             {
                 string fullCodeWithLineStart = $"#line {programBlock.Span.Start.Line - 1}\n{programBlock.FullCode}";
 
-                // Extract pragmas and entry points specified with old syntax
+                // Setup
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
                 var entryPoints = FindEntryPointPragmas(pragmas);
+                Dictionary<string, string> predefinedDirectives = GetPredefinedDirectives();
+                string cgIncludePath = $"{EditorApplication.applicationContentsPath}/CGIncludes";
 
                 // Compile each variant
                 var perThreadResult = new string[variantsToGenerate.Length];
                 var perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
                 var perThreadEntryPoints = new HashSet<(string stage, string entryName)>[variantsToGenerate.Length];
-                // TODO: Not quite sure if this is thread safe. Seems to work but needs more testing.
-                //Parallel.For(0, variantsToGenerate.Length, variantIdx =>
-                for (int variantIdx = 0; variantIdx < variantsToGenerate.Length; variantIdx++)
+                Parallel.For(0, variantsToGenerate.Length, variantIdx =>
                 {
                     perThreadResult[variantIdx] = CompileVariant(
                         fullCodeWithLineStart,
+                        cgIncludePath,
+                        predefinedDirectives,
                         variantsToGenerate[variantIdx].Keywords,
                         entryPoints,
                         out perThreadDiagnostic[variantIdx],
                         out perThreadEntryPoints[variantIdx]);
-                }
-                //);
+                });
 
                 // Gather the result of each compilation
                 string allVariants = string.Join("\n", perThreadResult);
@@ -274,7 +276,9 @@ namespace UnitySlangShader
 
             private string CompileVariant(
                 string fullCode,
-                string[] keywords,
+                string cgIncludePath,
+                Dictionary<string, string> predefinedDirectives,
+                HashSet<string> keywords,
                 List<(string stage, string entryName)> knownEntryPoints,
                 out List<string> diagnostics,
                 out HashSet<(string stage, string entryName)> outEntryPoints)
@@ -290,26 +294,22 @@ namespace UnitySlangShader
                 request.SetTargetFlags(SlangTargetFlags.SLANG_TARGET_FLAG_GENERATE_WHOLE_PROGRAM);
                 request.SetTargetLineDirectiveMode(SlangLineDirectiveMode.SLANG_LINE_DIRECTIVE_MODE_NONE);
 
-                request.AddSearchPath($"{EditorApplication.applicationContentsPath}/CGIncludes");
+                request.AddSearchPath(cgIncludePath);
 
-                // Base defines
-                request.AddPreprocessorDefine("SHADER_API_D3D11", "1"); // TODO: Base these on the current state of the editor
-                request.AddPreprocessorDefine("UNITY_COMPILER_DXC", "1");
-                request.AddPreprocessorDefine("UNITY_UNIFIED_SHADER_PRECISION_MODEL", "1");
-                request.AddPreprocessorDefine("min16float", "float");
-                request.AddPreprocessorDefine("min16float1", "float1");
-                request.AddPreprocessorDefine("min16float2", "float2");
-                request.AddPreprocessorDefine("min16float3", "float3");
-                request.AddPreprocessorDefine("min16float4", "float4");
-
-                // Define keywords
+                // Define user keywords
                 foreach (var keyword in keywords)
                 {
                     request.AddPreprocessorDefine(keyword, "1");
                 }
 
-                request.ProcessCommandLineArguments(new string[] { "-no-mangle", "-no-hlsl-binding", "-no-hlsl-pack-constant-buffer-elements" });
+                // Define directives
+                foreach ((string key, string val) in predefinedDirectives)
+                {
+                    request.AddPreprocessorDefine(key, val);
+                }
 
+                // Some stuff to make slang output something closer to Unity style
+                request.ProcessCommandLineArguments(new string[] { "-no-mangle", "-no-hlsl-binding", "-no-hlsl-pack-constant-buffer-elements" });
                 request.OverrideDiagnosticSeverity(15205, SlangSeverity.SLANG_SEVERITY_DISABLED); // undefined identifier in preprocessor expression will evaluate to 0
                 request.OverrideDiagnosticSeverity(15400, SlangSeverity.SLANG_SEVERITY_DISABLED); // redefinition of macro
                 request.OverrideDiagnosticSeverity(15601, SlangSeverity.SLANG_SEVERITY_DISABLED); // ignoring unknown directive
@@ -390,7 +390,7 @@ namespace UnitySlangShader
                 return codeBuilder.ToString();
             }
 
-            private void AppendKeywordCombinationDirective(StringBuilder sb, string[] keywords)
+            private void AppendKeywordCombinationDirective(StringBuilder sb, HashSet<string> keywords)
             {
                 HashSet<string> remaining = new HashSet<string>(allKeywords);
                 remaining.ExceptWith(keywords);
@@ -406,6 +406,81 @@ namespace UnitySlangShader
                 }
                 sb.AppendLine("1");
             }
+
+            private static (ShaderCompilerPlatform, string) GetShaderCompilerPlatformAndKeyword()
+            {
+                switch (SystemInfo.graphicsDeviceType)
+                {
+                    case GraphicsDeviceType.Direct3D11: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D11");
+                    case GraphicsDeviceType.OpenGLES2: return (ShaderCompilerPlatform.GLES20, "SHADER_API_GLES");
+                    case GraphicsDeviceType.OpenGLES3: return (ShaderCompilerPlatform.GLES3x, "SHADER_API_GLES3");
+                    case GraphicsDeviceType.PlayStation4: return (ShaderCompilerPlatform.PS4, "SHADER_API_PSSL");
+                    case GraphicsDeviceType.XboxOne: return (ShaderCompilerPlatform.XboxOneD3D11, "SHADER_API_XBOXONE");
+                    case GraphicsDeviceType.Metal: return (ShaderCompilerPlatform.Metal, "SHADER_API_METAL");
+                    case GraphicsDeviceType.OpenGLCore: return (ShaderCompilerPlatform.OpenGLCore, "SHADER_API_GLCORE");
+                    case GraphicsDeviceType.Direct3D12: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D12");
+                    case GraphicsDeviceType.Vulkan: return (ShaderCompilerPlatform.Vulkan, "SHADER_API_VULKAN");
+                    case GraphicsDeviceType.Switch: return (ShaderCompilerPlatform.Switch, "SHADER_API_SWITCH");
+                    case GraphicsDeviceType.XboxOneD3D12: return (ShaderCompilerPlatform.XboxOneD3D12, "SHADER_API_XBOXONE");
+                    case GraphicsDeviceType.GameCoreXboxOne: return (ShaderCompilerPlatform.GameCoreXboxOne, "SHADER_API_XBOXONE");
+                    case GraphicsDeviceType.GameCoreXboxSeries: return (ShaderCompilerPlatform.GameCoreXboxSeries, "SHADER_API_XBOXONE");
+                    case GraphicsDeviceType.PlayStation5: return (ShaderCompilerPlatform.PS5, "SHADER_API_PS5");
+                    case GraphicsDeviceType.PlayStation5NGGC: return (ShaderCompilerPlatform.PS5NGGC, "SHADER_API_PS5");
+                    default: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D11");
+                }
+            }
+
+            private Dictionary<string, string> GetPredefinedDirectives()
+            {
+                Dictionary<string, string> directives = new Dictionary<string, string>();
+
+                // Base defines
+                directives.Add("SHADER_TARGET", "50"); // sm 5.0 assumed
+                directives.Add("UNITY_COMPILER_DXC", "1"); // no combined sampler objects
+                directives.Add("UNITY_UNIFIED_SHADER_PRECISION_MODEL", "1"); // to deal with issues with half
+                directives.Add("min16float", "float");
+                directives.Add("min16float1", "float1");
+                directives.Add("min16float2", "float2");
+                directives.Add("min16float3", "float3");
+                directives.Add("min16float4", "float4");
+
+                // Platform defines
+                (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword();
+                directives.Add(platformKw, "1");
+                
+                var builtinDefines = ShaderUtil.GetShaderPlatformKeywordsForBuildTarget(compilerPlatform, EditorUserBuildSettings.activeBuildTarget);
+                foreach (BuiltinShaderDefine builtinDefine in builtinDefines)
+                {
+                    directives.Add(Enum.GetName(typeof(BuiltinShaderDefine), builtinDefine), "1");
+                }
+
+                if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS ||
+                    EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android ||
+                    EditorUserBuildSettings.activeBuildTarget == BuildTarget.tvOS)
+                {
+                    directives.Add("SHADER_API_MOBILE", "1");
+                }
+
+                if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLCore ||
+                    SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES2 ||
+                    SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES3)
+                {
+                    directives.Add("SHADER_TARGET_GLSL ", "1");
+                }
+
+                string unityVersion = Application.unityVersion.Replace(".", "");
+                for (int i = 0; i < unityVersion.Length; i++)
+                {
+                    if (!char.IsDigit(unityVersion[i]))
+                    {
+                        unityVersion = unityVersion[..i];
+                        break;
+                    }
+                }
+                directives.Add("UNITY_VERSION ", unityVersion);
+
+                return directives;
+            }
         }
 
         [SerializeField]
@@ -417,17 +492,31 @@ namespace UnitySlangShader
         [SerializeField]
         public SlangShaderDiagnostic[] Diagnostics;
 
+        [NonSerialized]
+        public bool AddVariantsRequested = false;
+
+        private static HashSet<SlangShaderVariant> GetInitialVariants(AssetImportContext ctx, string assetPath, string shaderSource, ShaderNode shaderNode)
+        {
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, new SlangShaderVariant[] { new SlangShaderVariant(new HashSet<string>()) }, shaderSource, shaderNode.Tokens);
+            string proxySourceCode = editor.ApplyEdits(shaderNode);
+
+            Shader variantInfoProxyShader = ShaderUtil.CreateShaderAsset(ctx, proxySourceCode, false);
+            HashSet<SlangShaderVariant> requestedVariants = SlangShaderVariantTracker.GetSlangShaderVariantsForShaderFromCurrentScene(variantInfoProxyShader);
+            ShaderUtil.ClearShaderMessages(variantInfoProxyShader);
+
+            if (Application.isPlaying)
+                Destroy(variantInfoProxyShader);
+            else
+                DestroyImmediate(variantInfoProxyShader);
+
+            return requestedVariants;
+        }
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
-            var newDiags = new List<SlangShaderDiagnostic>();
-
-            if (GeneratedVariants == null || GeneratedVariants.Length == 0)
-            {
-                GeneratedVariants = new SlangShaderVariant[] { new SlangShaderVariant(Array.Empty<string>()) };
-            }
-
             string shaderSource = File.ReadAllText(ctx.assetPath);
 
+            var newDiags = new List<SlangShaderDiagnostic>();
             ShaderLabParserConfig config = new ShaderLabParserConfig
             {
                 ParseEmbeddedHLSL = false
@@ -436,6 +525,16 @@ namespace UnitySlangShader
             foreach (var parserDiag in diagnostics)
             {
                 LogDiagnostic(newDiags, parserDiag.Text, parserDiag.Span.FileName, parserDiag.Location.Line, parserDiag.Kind.HasFlag(DiagnosticFlags.Warning));
+            }
+
+            // If we are trying to add variants, don't overwrite with initial ones.
+            if (AddVariantsRequested)
+            {
+                AddVariantsRequested = false;
+            }
+            else
+            {
+                GeneratedVariants = GetInitialVariants(ctx, ctx.assetPath, shaderSource, shaderNode).ToArray();
             }
 
             ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, GeneratedVariants, shaderSource, shaderNode.Tokens);

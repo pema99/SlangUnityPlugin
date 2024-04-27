@@ -9,14 +9,14 @@ using System.IO;
 using Unity.CodeEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
+using UnityEditor.Rendering;
+using UnityEditor.Build;
 
 namespace UnitySlangShader
 {
     [InitializeOnLoad]
     public class SlangShaderVariantTracker
     {
-        private static int totalVariantCount;
-
         private static readonly Func<int> getCurrentShaderVariantCollectionVariantCountWrapper;
         private static readonly Action<string> saveCurrentShaderVariantCollectionWrapper;
         private static readonly Action<Shader, bool> openShaderCombinationsWrapper;
@@ -37,13 +37,14 @@ namespace UnitySlangShader
                 .GetMethod("OpenShaderCombinations", BindingFlags.Static | BindingFlags.NonPublic)
                 .CreateDelegate(typeof(Action<Shader, bool>));
 
-            EditorApplication.update -= Update;
-            EditorApplication.update += Update;
+            //EditorApplication.update -= Update;
+            //EditorApplication.update += Update;
 
             EditorSceneManager.sceneOpened -= OpenScene;
             EditorSceneManager.sceneOpened += OpenScene;
         }
 
+        #region ShaderVariantCollection based gathering
         private static Dictionary<string, HashSet<SlangShaderVariant>> GetAllSlangShaderVariants()
         {
             string basePath = "Assets/SlangShaderCache";
@@ -81,7 +82,7 @@ namespace UnitySlangShader
                     for (int variantIdx = 0; variantIdx < variants.arraySize; variantIdx++)
                     {
                         var keywords = variants.GetArrayElementAtIndex(variantIdx).FindPropertyRelative("keywords").stringValue.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        variantsArray[variantIdx] = new SlangShaderVariant(keywords);
+                        variantsArray[variantIdx] = new SlangShaderVariant(keywords.ToHashSet());
                     }
                     slangShaderVariantMap[shaderPath] = variantsArray.ToHashSet();
                 }
@@ -90,6 +91,7 @@ namespace UnitySlangShader
             return slangShaderVariantMap;
         }
 
+        private static int totalVariantCount;
         private static void Update()
         {
             int newVariantCount = getCurrentShaderVariantCollectionVariantCountWrapper();
@@ -108,12 +110,15 @@ namespace UnitySlangShader
                         currentSet.UnionWith(variants);
                         importer.GeneratedVariants = currentSet.ToArray();
                         EditorUtility.SetDirty(importer);
+                        importer.AddVariantsRequested = true;
                         importer.SaveAndReimport();
                     }
                 }
             }
         }
+        #endregion
 
+        #region OpenShaderCombinations based gathering
         private class DummyCodeEditor : IExternalCodeEditor
         {
             public void Initialize(string editorInstallationPath) { }
@@ -173,7 +178,7 @@ namespace UnitySlangShader
                     else if (isParsingVariants)
                     {
                         string[] keywords = lineText == "<no keywords defined>" ? Array.Empty<string>() : lineText.Split(' ');
-                        result.Add(new SlangShaderVariant(keywords));
+                        result.Add(new SlangShaderVariant(keywords.ToHashSet()));
                     }
                 }
             }
@@ -183,20 +188,30 @@ namespace UnitySlangShader
                 Debug.unityLogger.filterLogType = LogType.Log;
             }
 
-            return result;
+            // Add stereo variants
+            var resultWithStereoVariants = new HashSet<SlangShaderVariant>();
+            foreach (var variant in result)
+            {
+                resultWithStereoVariants.Add(variant);
+                resultWithStereoVariants.Add(new SlangShaderVariant(variant.Keywords.Append("STEREO_INSTANCING_ON").ToHashSet()));
+                resultWithStereoVariants.Add(new SlangShaderVariant(variant.Keywords.Append("UNITY_SINGLE_PASS_STEREO").ToHashSet()));
+            }
+
+            return resultWithStereoVariants;
         }
 
         private static void OpenScene(Scene scene, OpenSceneMode mode)
         {
-            if (!BuildPipeline.isBuildingPlayer)
-                return;
-
             // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
-            // Maybe try vanilla System.IO calls
+            //var sw = System.Diagnostics.Stopwatch.StartNew();
+            
             var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
                 .Select(x => AssetDatabase.GUIDToAssetPath(x))
                 .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
                 .ToHashSet();
+            
+            //Debug.Log("Finding slang shaders took " + sw.ElapsedMilliseconds + " ms");
+            //sw.Restart();
 
             foreach (string path in slangShaderPaths)
             {
@@ -210,9 +225,13 @@ namespace UnitySlangShader
                     currentSet.UnionWith(variants);
                     importer.GeneratedVariants = currentSet.ToArray();
                     EditorUtility.SetDirty(importer);
+                    importer.AddVariantsRequested = true;
                     importer.SaveAndReimport(); 
                 }
             }
+            
+            //Debug.Log("Slang shader processing took " + sw.ElapsedMilliseconds + " ms");
         }
+        #endregion
     }
 }
