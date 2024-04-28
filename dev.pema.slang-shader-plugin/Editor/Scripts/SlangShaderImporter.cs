@@ -243,20 +243,39 @@ namespace UnitySlangShader
                 int doneVariants = 0;
                 var compileTask = Task.Run(() =>
                 {
-                    Parallel.For(0, variantsToGenerate.Length, variantIdx =>
+                    int threadCount = Environment.ProcessorCount;
+                    ConcurrentQueue<int> remainingWork = new ConcurrentQueue<int>(Enumerable.Range(0, variantsToGenerate.Length));
+                    Thread[] threads = new Thread[threadCount];
+                    for (int i = 0; i < threadCount; i++)
                     {
-                        perThreadResult[variantIdx] = CompileVariant(
-                            fullCodeWithLineStart,
-                            includePaths,
-                            predefinedDirectives,
-                            variantsToGenerate[variantIdx].Keywords,
-                            entryPoints,
-                            out perThreadDiagnostic[variantIdx],
-                            out perThreadEntryPoints[variantIdx],
-                            out perThreadDependencyFiles[variantIdx]);
+                        threads[i] = new Thread(() =>
+                        {
+                            using SlangSession session = new SlangSession();
+                            while (!remainingWork.IsEmpty)
+                            {
+                                if (!remainingWork.TryDequeue(out int variantIdx))
+                                    continue;
 
-                        Interlocked.Increment(ref doneVariants);
-                    });
+                                perThreadResult[variantIdx] = CompileVariant(
+                                    session,
+                                    fullCodeWithLineStart,
+                                    includePaths,
+                                    predefinedDirectives,
+                                    variantsToGenerate[variantIdx].Keywords,
+                                    entryPoints,
+                                    out perThreadDiagnostic[variantIdx],
+                                    out perThreadEntryPoints[variantIdx],
+                                    out perThreadDependencyFiles[variantIdx]);
+
+                                Interlocked.Increment(ref doneVariants);
+                            }
+                        });
+                        threads[i].Start();
+                    }
+                    for (int i = 0; i < threadCount; i++)
+                    {
+                        threads[i].Join();
+                    }
                 });
 
                 // Show progress if there are enough variants to justify it
@@ -270,6 +289,7 @@ namespace UnitySlangShader
                             (float)doneVariants / (float)variantsToGenerate.Length);
                         Thread.Sleep(10);
                     }
+                    EditorUtility.ClearProgressBar();
                 }
                 else
                 {
@@ -305,6 +325,7 @@ namespace UnitySlangShader
             }
 
             private string CompileVariant(
+                SlangSession slangSession,
                 string fullCode,
                 string[] includePaths,
                 Dictionary<string, string> predefinedDirectives,
@@ -318,8 +339,7 @@ namespace UnitySlangShader
                 outEntryPoints = new HashSet<(string stage, string entryName)>();
                 dependencyFiles = new string[0];
 
-                using SlangSession session = new SlangSession();
-                using CompileRequest request = session.CreateCompileRequest();
+                using CompileRequest request = slangSession.CreateCompileRequest();
 
                 request.SetCodeGenTarget(SlangCompileTarget.SLANG_HLSL);
                 request.SetMatrixLayoutMode(SlangMatrixLayoutMode.SLANG_MATRIX_LAYOUT_COLUMN_MAJOR);
