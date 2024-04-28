@@ -20,6 +20,7 @@ using UnityEditor.Rendering;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using UnityEngine.Rendering;
+using System.Threading;
 
 namespace UnitySlangShader
 {
@@ -121,8 +122,8 @@ namespace UnitySlangShader
         // Traverses ShaderLab code and replaces Slang blocks with HLSL blocks
         private class ShaderLabSlangEditor : ShaderLabEditor
         {
-            public string[] Diagnostics = new string[0];
-            public string[] DependencyFiles = new string[0];
+            public HashSet<string> Diagnostics = new HashSet<string>();
+            public HashSet<string> DependencyFiles = new HashSet<string>();
 
             private string filePath = string.Empty;
 
@@ -239,23 +240,46 @@ namespace UnitySlangShader
                 var perThreadDiagnostic = new List<string>[variantsToGenerate.Length];
                 var perThreadEntryPoints = new HashSet<(string stage, string entryName)>[variantsToGenerate.Length];
                 var perThreadDependencyFiles = new string[variantsToGenerate.Length][];
-                Parallel.For(0, variantsToGenerate.Length, variantIdx =>
+                int doneVariants = 0;
+                var compileTask = Task.Run(() =>
                 {
-                    perThreadResult[variantIdx] = CompileVariant(
-                        fullCodeWithLineStart,
-                        includePaths,
-                        predefinedDirectives,
-                        variantsToGenerate[variantIdx].Keywords,
-                        entryPoints,
-                        out perThreadDiagnostic[variantIdx],
-                        out perThreadEntryPoints[variantIdx],
-                        out perThreadDependencyFiles[variantIdx]);
+                    Parallel.For(0, variantsToGenerate.Length, variantIdx =>
+                    {
+                        perThreadResult[variantIdx] = CompileVariant(
+                            fullCodeWithLineStart,
+                            includePaths,
+                            predefinedDirectives,
+                            variantsToGenerate[variantIdx].Keywords,
+                            entryPoints,
+                            out perThreadDiagnostic[variantIdx],
+                            out perThreadEntryPoints[variantIdx],
+                            out perThreadDependencyFiles[variantIdx]);
+
+                        Interlocked.Increment(ref doneVariants);
+                    });
                 });
+
+                // Show progress if there are enough variants to justify it
+                if (variantsToGenerate.Length > 16)
+                {
+                    while (!compileTask.IsCompleted)
+                    {
+                        EditorUtility.DisplayProgressBar(
+                            "Slang Shader compilation",
+                            $"Compiling variant ({doneVariants} / {variantsToGenerate.Length})",
+                            (float)doneVariants / (float)variantsToGenerate.Length);
+                        Thread.Sleep(10);
+                    }
+                }
+                else
+                {
+                    compileTask.Wait();
+                }
 
                 // Gather the result of each compilation
                 string allVariants = string.Join("\n", perThreadResult);
-                Diagnostics = perThreadDiagnostic.SelectMany(x => x).Distinct().ToArray();
-                DependencyFiles = perThreadDependencyFiles.SelectMany(x => x).Distinct().ToArray();
+                Diagnostics.UnionWith(perThreadDiagnostic.SelectMany(x => x));
+                DependencyFiles.UnionWith(perThreadDependencyFiles.SelectMany(x => x));
 
                 // Find all entry points from each variant, make pragmas from them
                 var allEntryPoints = new HashSet<(string stage, string entryName)>();

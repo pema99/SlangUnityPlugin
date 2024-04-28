@@ -164,12 +164,14 @@ namespace UnitySlangShader.SlangAPI
         #endregion
 
         private readonly IntPtr request = IntPtr.Zero;
+        private readonly GCHandle handle;
         private readonly List<string> diagnostics = new List<string>();
 
         public CompileRequest(IntPtr session)
         {
+            handle = GCHandle.Alloc(this);
             request = spCreateCompileRequest(session);
-            spSetDiagnosticCallback(request, DiagnosticCallback, IntPtr.Zero);
+            spSetDiagnosticCallback(request, DiagnosticCallback, (IntPtr)handle);
         }
 
         private static readonly string[] ignoreDiagnosticsFrom = new string[]
@@ -177,7 +179,7 @@ namespace UnitySlangShader.SlangAPI
             "UnityCG.cginc", "HLSLSupport.cginc", "UnityShaderVariables.cginc"
         };
 
-        private void DiagnosticCallback(IntPtr message, IntPtr userData)
+        private static void DiagnosticCallback(IntPtr message, IntPtr userData)
         {
             string messageStr = Marshal.PtrToStringAnsi(message);
             string[] splits = messageStr.Split(new string[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
@@ -188,7 +190,9 @@ namespace UnitySlangShader.SlangAPI
             // Filter out warnings from builtin files
             if (!ignored)
             {
-                diagnostics.Add(messageStr);
+                GCHandle selfHandle = (GCHandle)userData;
+                CompileRequest self = selfHandle.Target as CompileRequest;
+                self?.diagnostics.Add(messageStr);
             }
         }
 
@@ -235,6 +239,7 @@ namespace UnitySlangShader.SlangAPI
         {
             spSetDiagnosticCallback(request, null, IntPtr.Zero);
             spDestroyCompileRequest(request);
+            handle.Free();
         }
     }
 
