@@ -371,7 +371,7 @@ namespace UnitySlangShader
                 request.OverrideDiagnosticSeverity(39019, SlangSeverity.SLANG_SEVERITY_DISABLED); // implicitly global shader parameter with no uniform keyword
                 request.OverrideDiagnosticSeverity(30056, SlangSeverity.SLANG_SEVERITY_DISABLED); // non-short-circuiting ternary
 
-                int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_HLSL, "Main Translation Unit");
+                int translationUnitIndex = request.AddTranslationUnit(SlangSourceLanguage.SLANG_SOURCE_LANGUAGE_SLANG, "Main Translation Unit");
                 request.AddTranslationUnitSourceString(translationUnitIndex, filePath, fullCode);
 
                 // Handle #pragma style entry point syntax, to avoid confusing the user.
