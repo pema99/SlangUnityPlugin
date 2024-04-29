@@ -599,8 +599,18 @@ namespace UnitySlangShader
             }
             else
             {
-                GeneratedVariants = GetInitialVariants(ctx, ctx.assetPath, shaderSource, shaderNode).ToArray();
+                // If we already have some variants tracked, used those as initial variants
+                if (SlangShaderVariantTracker.CurrentlyLoadedSlangShaderVariants.TryGetValue(ctx.assetPath, out var variants))
+                {
+                    GeneratedVariants = variants.ToArray();
+                }
+                // Otherwise use the null variant (TODO)
+                else
+                {
+                    GeneratedVariants = new SlangShaderVariant[] { new SlangShaderVariant(new HashSet<string>()) };
+                }
             }
+            EditorUtility.SetDirty(this);
 
             ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, GeneratedVariants, shaderSource, shaderNode.Tokens);
             GeneratedSourceCode = editor.ApplyEdits(shaderNode);

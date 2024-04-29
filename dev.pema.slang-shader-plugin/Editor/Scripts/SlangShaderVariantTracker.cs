@@ -37,8 +37,8 @@ namespace UnitySlangShader
                 .GetMethod("OpenShaderCombinations", BindingFlags.Static | BindingFlags.NonPublic)
                 .CreateDelegate(typeof(Action<Shader, bool>));
 
-            //EditorApplication.update -= Update;
-            //EditorApplication.update += Update;
+            EditorApplication.update -= Update;
+            EditorApplication.update += Update;
 
             EditorSceneManager.sceneOpened -= OpenScene;
             EditorSceneManager.sceneOpened += OpenScene;
@@ -92,6 +92,7 @@ namespace UnitySlangShader
         }
 
         private static int totalVariantCount;
+        public static Dictionary<string, HashSet<SlangShaderVariant>> CurrentlyLoadedSlangShaderVariants = new Dictionary<string, HashSet<SlangShaderVariant>>();
         private static void Update()
         {
             int newVariantCount = getCurrentShaderVariantCollectionVariantCountWrapper();
@@ -99,16 +100,15 @@ namespace UnitySlangShader
             {
                 totalVariantCount = newVariantCount;
 
-                Dictionary<string, HashSet<SlangShaderVariant>> variantMap = GetAllSlangShaderVariants();
+                CurrentlyLoadedSlangShaderVariants = GetAllSlangShaderVariants();
 
-                foreach ((string path, HashSet<SlangShaderVariant> variants) in variantMap)
+                foreach ((string path, HashSet<SlangShaderVariant> variants) in CurrentlyLoadedSlangShaderVariants)
                 {
                     var importer = AssetImporter.GetAtPath(path) as SlangShaderImporter;
                     var currentSet = new HashSet<SlangShaderVariant>(importer.GeneratedVariants); // TODO
                     if (!currentSet.IsSupersetOf(variants))
                     {
-                        currentSet.UnionWith(variants);
-                        importer.GeneratedVariants = currentSet.ToArray();
+                        importer.GeneratedVariants = variants.ToArray();
                         importer.AddVariantsRequested = true;
                         EditorUtility.SetDirty(importer);
                         importer.SaveAndReimport();
@@ -202,6 +202,9 @@ namespace UnitySlangShader
 
         private static void OpenScene(Scene scene, OpenSceneMode mode)
         {
+            if (!BuildPipeline.isBuildingPlayer)
+                return;
+
             // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
             //var sw = System.Diagnostics.Stopwatch.StartNew();
             
