@@ -391,7 +391,7 @@ namespace UnitySlangShader
                         default: break;
                     }
                     diagnostics.Add($"Shader uses #pragma syntax for specifying entry point '{entryPoint.entryName}'. " +
-                        $"Please consider annotating the entry point with the [shader(\"{entryPoint.stage}\")] attribute instead.");
+                        $"Annotate the entry point with the [shader(\"{entryPoint.stage}\")] attribute instead.");
                     request.AddEntryPoint(translationUnitIndex, entryPoint.entryName, stage);
                 }
 

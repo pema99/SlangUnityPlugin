@@ -176,7 +176,7 @@ namespace UnitySlangShader.SlangAPI
 
         private static readonly string[] ignoreDiagnosticsFrom = new string[]
         {
-            "UnityCG.cginc", "HLSLSupport.cginc", "UnityShaderVariables.cginc"
+            "UnityCG.cginc", "HLSLSupport.cginc", "UnityShaderVariables.cginc", "UnityShadowLibrary.cginc"
         };
 
         private static void DiagnosticCallback(IntPtr message, IntPtr userData)
