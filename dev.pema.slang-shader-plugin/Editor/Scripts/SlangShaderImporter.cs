@@ -557,7 +557,7 @@ namespace UnitySlangShader
         [SerializeField]
         public SlangShaderDiagnostic[] Diagnostics;
 
-        [NonSerialized]
+        [SerializeField]
         public bool AddVariantsRequested = false;
 
         private static HashSet<SlangShaderVariant> GetInitialVariants(AssetImportContext ctx, string assetPath, string shaderSource, ShaderNode shaderNode)

@@ -109,8 +109,8 @@ namespace UnitySlangShader
                     {
                         currentSet.UnionWith(variants);
                         importer.GeneratedVariants = currentSet.ToArray();
-                        EditorUtility.SetDirty(importer);
                         importer.AddVariantsRequested = true;
+                        EditorUtility.SetDirty(importer);
                         importer.SaveAndReimport();
                     }
                 }
@@ -224,8 +224,8 @@ namespace UnitySlangShader
                 {
                     currentSet.UnionWith(variants);
                     importer.GeneratedVariants = currentSet.ToArray();
-                    EditorUtility.SetDirty(importer);
                     importer.AddVariantsRequested = true;
+                    EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport(); 
                 }
             }
