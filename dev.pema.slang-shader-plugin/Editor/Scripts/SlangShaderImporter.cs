@@ -243,7 +243,10 @@ namespace UnitySlangShader
                 int doneVariants = 0;
                 var compileTask = Task.Run(() =>
                 {
-                    int threadCount = Environment.ProcessorCount;
+                    // We estimate that each thread needs to compile about 4 variants for parallelization to be worth it
+                    float saturation = (float)variantsToGenerate.Length / (Environment.ProcessorCount * 4);
+                    int threadCount = Mathf.Clamp(Mathf.CeilToInt(saturation * Environment.ProcessorCount), 1, Environment.ProcessorCount);
+
                     ConcurrentQueue<int> remainingWork = new ConcurrentQueue<int>(Enumerable.Range(0, variantsToGenerate.Length));
                     Thread[] threads = new Thread[threadCount];
                     for (int i = 0; i < threadCount; i++)
