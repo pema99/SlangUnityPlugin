@@ -676,6 +676,25 @@ namespace UnitySlangShader
                     LogDiagnostic(newDiags, message.message, message.file, message.line, message.severity == ShaderCompilerMessageSeverity.Warning);
                 }
             }
+            ShaderUtil.ClearShaderMessages(shaderAsset);
+
+            ctx.AddObjectToAsset("Generated shader", shaderAsset);
+            ctx.SetMainObject(shaderAsset);
+
+            // Check if any generated variants use keywords that don't exist (for example beacause they were removed from the shader).
+            // In this case, we have no choice but to reset to variant tracker, which will trigger a reimport.
+            HashSet<string> allKeywords = Shader.globalKeywords
+                .Select(x => x.name)
+                .Union(shaderAsset.keywordSpace.keywords.Select(x => x.name))
+                .ToHashSet();
+            foreach (SlangShaderVariant variant in GeneratedVariants)
+            {
+                if (variant.Keywords.Except(allKeywords).Any())
+                {
+                    SlangShaderVariantTracker.ResetTrackedVariants();
+                    return; // Early out so we don't print diagnostics from this invalid compilation.
+                }
+            }
 
             Diagnostics = newDiags.ToArray();
             foreach (var diag in Diagnostics)
@@ -685,9 +704,6 @@ namespace UnitySlangShader
                     ctx.LogImportError($"{ctx.assetPath}({diag.Line}): {diag.Text}");
                 }
             }
-
-            ctx.AddObjectToAsset("Generated shader", shaderAsset);
-            ctx.SetMainObject(shaderAsset);
         }
 
         private static void LogDiagnostic(List<SlangShaderDiagnostic> diags, string message, string file, int line, bool warning)

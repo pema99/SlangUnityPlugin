@@ -19,6 +19,7 @@ namespace UnitySlangShader
     {
         private static readonly Func<int> getCurrentShaderVariantCollectionVariantCountWrapper;
         private static readonly Action<string> saveCurrentShaderVariantCollectionWrapper;
+        private static readonly Action clearCurrentShaderVariantCollectionWrapper;
         private static readonly Action<Shader, bool> openShaderCombinationsWrapper;
 
         static SlangShaderVariantTracker()
@@ -33,6 +34,10 @@ namespace UnitySlangShader
                 .GetMethod("SaveCurrentShaderVariantCollection", BindingFlags.NonPublic | BindingFlags.Static)
                 .CreateDelegate(typeof(Action<string>));
 
+            clearCurrentShaderVariantCollectionWrapper = (Action)typeof(ShaderUtil)
+                .GetMethod("ClearCurrentShaderVariantCollection", BindingFlags.NonPublic | BindingFlags.Static)
+                .CreateDelegate(typeof(Action));
+
             openShaderCombinationsWrapper = (Action<Shader, bool>)typeof(ShaderUtil)
                 .GetMethod("OpenShaderCombinations", BindingFlags.Static | BindingFlags.NonPublic)
                 .CreateDelegate(typeof(Action<Shader, bool>));
@@ -42,6 +47,12 @@ namespace UnitySlangShader
 
             EditorSceneManager.sceneOpened -= OpenScene;
             EditorSceneManager.sceneOpened += OpenScene;
+        }
+
+        public static void ResetTrackedVariants()
+        {
+            totalVariantCount = 0;
+            clearCurrentShaderVariantCollectionWrapper();
         }
 
         #region ShaderVariantCollection based gathering
