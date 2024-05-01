@@ -11,12 +11,43 @@ using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEditor.Rendering;
 using UnityEditor.Build;
+using HarmonyLib;
 
 namespace UnitySlangShader
 {
     [InitializeOnLoad]
     public class SlangShaderVariantTracker
     {
+        // TODO: Player build
+        #region Harmony patches
+        private static Harmony harmonyInstance = new Harmony("pema.dev.slang-shader-plugin");
+
+        [HarmonyPatch(typeof(BuildPipeline), nameof(BuildPipeline.BuildAssetBundles),
+            new Type[] { typeof(string), typeof(BuildAssetBundleOptions), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int) })]
+        private class HarmonyAssetBundleBuildHook0
+        {
+            static bool Prefix()
+            {
+                CompileSlangShaderVariantsFromScenes(new string[] { SceneManager.GetActiveScene().path });
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(BuildPipeline), nameof(BuildPipeline.BuildAssetBundles),
+            new Type[] { typeof(string), typeof(AssetBundleBuild[]), typeof(BuildAssetBundleOptions), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int) })]
+        private class HarmonyAssetBundleBuildHook1
+        {
+            static bool Prefix(AssetBundleBuild[] builds)
+            {
+                List<string> scenePaths = new List<string>();
+                scenePaths.Add(SceneManager.GetActiveScene().path);
+                scenePaths.AddRange(builds.SelectMany(x => x.assetNames.Where(y => y.EndsWith(".unity"))));
+                CompileSlangShaderVariantsFromScenes(scenePaths.Distinct());
+                return true;
+            }
+        }
+        #endregion
+
         private static readonly Func<int> getCurrentShaderVariantCollectionVariantCountWrapper;
         private static readonly Action<string> saveCurrentShaderVariantCollectionWrapper;
         private static readonly Action clearCurrentShaderVariantCollectionWrapper;
@@ -24,6 +55,8 @@ namespace UnitySlangShader
 
         static SlangShaderVariantTracker()
         {
+            harmonyInstance.PatchAll();
+
             totalVariantCount = 0;
 
             getCurrentShaderVariantCollectionVariantCountWrapper = (Func<int>)typeof(ShaderUtil)
@@ -44,18 +77,15 @@ namespace UnitySlangShader
 
             EditorApplication.update -= Update;
             EditorApplication.update += Update;
-
-            EditorSceneManager.sceneOpened -= OpenScene;
-            EditorSceneManager.sceneOpened += OpenScene;
         }
 
+        #region ShaderVariantCollection based gathering
         public static void ResetTrackedVariants()
         {
             totalVariantCount = 0;
             clearCurrentShaderVariantCollectionWrapper();
         }
 
-        #region ShaderVariantCollection based gathering
         private static Dictionary<string, HashSet<SlangShaderVariant>> GetAllSlangShaderVariants()
         {
             string basePath = "Assets/SlangShaderCache";
@@ -211,22 +241,8 @@ namespace UnitySlangShader
             return resultWithStereoVariants;
         }
 
-        private static void OpenScene(Scene scene, OpenSceneMode mode)
+        private static void GatherSlangVariantsFromScene(HashSet<string> slangShaderPaths, HashSet<SlangShaderImporter> gatheredShaders)
         {
-            if (!BuildPipeline.isBuildingPlayer)
-                return;
-
-            // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
-            //var sw = System.Diagnostics.Stopwatch.StartNew();
-            
-            var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
-                .Select(x => AssetDatabase.GUIDToAssetPath(x))
-                .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
-                .ToHashSet();
-            
-            //Debug.Log("Finding slang shaders took " + sw.ElapsedMilliseconds + " ms");
-            //sw.Restart();
-
             foreach (string path in slangShaderPaths)
             {
                 var importer = AssetImporter.GetAtPath(path) as SlangShaderImporter;
@@ -240,11 +256,38 @@ namespace UnitySlangShader
                     importer.GeneratedVariants = currentSet.ToArray();
                     importer.AddVariantsRequested = true;
                     EditorUtility.SetDirty(importer);
-                    importer.SaveAndReimport(); 
+                    gatheredShaders.Add(importer);
                 }
             }
-            
-            //Debug.Log("Slang shader processing took " + sw.ElapsedMilliseconds + " ms");
+        }
+
+        private static void CompileSlangShaderVariantsFromScenes(IEnumerable<string> scenes)
+        {
+            // Find all shaders
+            // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
+            var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
+                .Select(x => AssetDatabase.GUIDToAssetPath(x))
+                .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
+                .ToHashSet();
+
+            // Gather from each scene
+            HashSet<SlangShaderImporter> shadersToReimport = new HashSet<SlangShaderImporter>();
+            foreach (string path in scenes)
+            {
+                // No need to re-open if the scene is already open
+                if (path != SceneManager.GetActiveScene().path)
+                {
+                    EditorSceneManager.OpenScene(path);
+                }
+
+                GatherSlangVariantsFromScene(slangShaderPaths, shadersToReimport);
+            }
+
+            // Reimport all
+            foreach (var shader in shadersToReimport)
+            {
+                shader.SaveAndReimport();
+            }
         }
         #endregion
     }
