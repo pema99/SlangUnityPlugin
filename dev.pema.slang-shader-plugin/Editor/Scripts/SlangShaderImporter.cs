@@ -304,27 +304,17 @@ namespace UnitySlangShader
                 Diagnostics.UnionWith(perThreadDiagnostic.SelectMany(x => x));
                 DependencyFiles.UnionWith(perThreadDependencyFiles.SelectMany(x => x));
 
-                // Find all entry points from each variant, make pragmas from them
-                var allEntryPoints = new HashSet<(string stage, string entryName)>();
-                foreach (var variantEntryPoints in perThreadEntryPoints)
-                {
-                    allEntryPoints.UnionWith(variantEntryPoints);
-                }
+                // Find all entry points from each variant, make pragmas from them. Add vert or frag if missing.
+                var allEntryPoints = CollectEntryPoints(perThreadEntryPoints);
                 string entryPointPragmas = $"{string.Join("\n", allEntryPoints.Select(x => $"#pragma {x.stage} {x.entryName}"))}\n";
 
                 // Some pragmas like multi_compile should just be passed through directly
                 string passthroughPragmas = GetPassthroughPragmas(pragmas);
 
                 // In case a request variant is missing or failed to compile, provide a fallback variant 
-                StringBuilder fallbackVariantBuilder = new StringBuilder();
-                fallbackVariantBuilder.AppendLine("#ifndef SLANG_SHADER_VARIANT_FOUND");
-                foreach ((string stage, string entryName) in allEntryPoints)
-                {
-                    fallbackVariantBuilder.AppendLine($"void {entryName}() {{}}");
-                }
-                fallbackVariantBuilder.AppendLine("#endif");
+                string fallbackVariant = GetFallbackVariant(allEntryPoints);
 
-                Edit(programBlock.Span, $"HLSLPROGRAM\n{entryPointPragmas}{passthroughPragmas}{allVariants}{fallbackVariantBuilder}\nENDHLSL");
+                Edit(programBlock.Span, $"HLSLPROGRAM\n{entryPointPragmas}{passthroughPragmas}{allVariants}{fallbackVariant}\nENDHLSL");
             }
 
             private string CompileVariant(
@@ -549,6 +539,45 @@ namespace UnitySlangShader
 
                 return directives;
             }
+
+            private static HashSet<(string stage, string entryName)> CollectEntryPoints(IEnumerable<HashSet<(string stage, string entryName)>> perVariantEntryPoints)
+            {
+                var allEntryPoints = new HashSet<(string stage, string entryName)>();
+                foreach (var variantEntryPoints in perVariantEntryPoints)
+                {
+                    allEntryPoints.UnionWith(variantEntryPoints);
+                }
+                // If vertex or fragment is missing, add it
+                if (allEntryPoints.Count(x => x.stage.ToLower() == "vertex") == 0)
+                    allEntryPoints.Add(("vertex", "vert"));
+                if (allEntryPoints.Count(x => x.stage.ToLower() == "fragment") == 0)
+                    allEntryPoints.Add(("fragment", "frag"));
+                return allEntryPoints;
+            }
+
+            private static string GetFallbackVariant(IEnumerable<(string stage, string entryName)> entryPoints)
+            {
+                StringBuilder fallbackVariantBuilder = new StringBuilder();
+                fallbackVariantBuilder.AppendLine("#ifndef SLANG_SHADER_VARIANT_FOUND");
+                foreach ((string stage, string entryName) in entryPoints)
+                {
+                    if (stage.ToLower() == "fragment")
+                    {
+                        fallbackVariantBuilder.AppendLine($"float4 {entryName}(float4 pos : SV_Position) : SV_Target {{ return float4(0,1,1,1); }}");
+                    }
+                    else if (stage.ToLower() == "vertex")
+                    {
+                        fallbackVariantBuilder.AppendLine("#include \"UnityCG.cginc\"");
+                        fallbackVariantBuilder.AppendLine($"float4 {entryName}(float4 pos : POSITION) : SV_Position {{ return UnityObjectToClipPos(pos); }}");
+                    }
+                    else
+                    {
+                        fallbackVariantBuilder.AppendLine($"void {entryName}() {{}}");
+                    }
+                }
+                fallbackVariantBuilder.AppendLine("#endif");
+                return fallbackVariantBuilder.ToString();
+            }
         }
 
         [SerializeField]
@@ -610,7 +639,7 @@ namespace UnitySlangShader
                 // Otherwise use the null variant (TODO)
                 else
                 {
-                    GeneratedVariants = new SlangShaderVariant[] { new SlangShaderVariant(new HashSet<string>()) };
+                    GeneratedVariants = new SlangShaderVariant[] { };
                 }
             }
             EditorUtility.SetDirty(this);

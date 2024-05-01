@@ -44,7 +44,7 @@ namespace UnitySlangShader
             {
                 using (new EditorGUI.DisabledScope(true))
                 {
-                    EditorGUILayout.TextArea(serializedObject.FindProperty("GeneratedSourceCode").stringValue);
+                    EditorGUILayout.TextArea(importer.GeneratedSourceCode);
                 }
             }
 
@@ -64,6 +64,8 @@ namespace UnitySlangShader
             }
 
             DrawErrorList(importer.Diagnostics);
+
+            Apply();
 
             base.ApplyRevertGUI();
         }
