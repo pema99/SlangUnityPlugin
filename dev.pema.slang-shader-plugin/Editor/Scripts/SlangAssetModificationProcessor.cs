@@ -15,6 +15,7 @@ namespace UnitySlangShader
         {
             if (path.EndsWith(".slangshader") || path.EndsWith(".slang"))
             {
+                SlangShaderVariantTracker.SlangShaderPaths.Remove(path);
                 SlangShaderVariantTracker.ResetTrackedVariants();
             }
 
@@ -25,6 +26,8 @@ namespace UnitySlangShader
         {
             if (path.EndsWith(".slangshader") || path.EndsWith(".slang"))
             {
+                SlangShaderVariantTracker.SlangShaderPaths.Remove(path);
+                SlangShaderVariantTracker.SlangShaderPaths.Add(newPath);
                 SlangShaderVariantTracker.ResetTrackedVariants();
             }
 

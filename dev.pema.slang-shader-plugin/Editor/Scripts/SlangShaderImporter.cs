@@ -611,6 +611,8 @@ namespace UnitySlangShader
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
+            SlangShaderVariantTracker.SlangShaderPaths.Add(ctx.assetPath);
+
             string shaderSource = File.ReadAllText(ctx.assetPath);
 
             var newDiags = new List<SlangShaderDiagnostic>();

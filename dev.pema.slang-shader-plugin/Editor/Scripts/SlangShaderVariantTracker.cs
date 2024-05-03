@@ -53,6 +53,11 @@ namespace UnitySlangShader
         private static readonly Action clearCurrentShaderVariantCollectionWrapper;
         private static readonly Action<Shader, bool> openShaderCombinationsWrapper;
 
+        private static int totalVariantCount;
+        public static Dictionary<string, HashSet<SlangShaderVariant>> CurrentlyLoadedSlangShaderVariants = new Dictionary<string, HashSet<SlangShaderVariant>>();
+
+        public static HashSet<string> SlangShaderPaths = new HashSet<string>();
+
         static SlangShaderVariantTracker()
         {
             harmonyInstance.PatchAll();
@@ -75,6 +80,11 @@ namespace UnitySlangShader
                 .GetMethod("OpenShaderCombinations", BindingFlags.Static | BindingFlags.NonPublic)
                 .CreateDelegate(typeof(Action<Shader, bool>));
 
+            SlangShaderPaths = AssetDatabase.FindAssets("t:Shader")
+                .Select(x => AssetDatabase.GUIDToAssetPath(x))
+                .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
+                .ToHashSet();
+
             EditorApplication.update -= Update;
             EditorApplication.update += Update;
         }
@@ -96,15 +106,8 @@ namespace UnitySlangShader
             saveCurrentShaderVariantCollectionWrapper(svcPath);
             var svc = AssetDatabase.LoadAssetAtPath<ShaderVariantCollection>(svcPath);
 
-            // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
-            // Maybe try vanilla System.IO calls
-            var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
-                .Select(x => AssetDatabase.GUIDToAssetPath(x))
-                .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
-                .ToHashSet();
-
             var slangShaderVariantMap = new Dictionary<string, HashSet<SlangShaderVariant>>();
-            if (slangShaderPaths.Count == 0)
+            if (SlangShaderPaths.Count == 0)
                 return slangShaderVariantMap;
 
             var serializedSvc = new SerializedObject(svc);
@@ -116,7 +119,7 @@ namespace UnitySlangShader
                 var shader = elem.FindPropertyRelative("first").objectReferenceValue as Shader;
                 string shaderPath = AssetDatabase.GetAssetPath(shader);
 
-                if (slangShaderPaths.Contains(shaderPath))
+                if (SlangShaderPaths.Contains(shaderPath))
                 {
                     var variants = elem.FindPropertyRelative("second.variants");
                     var variantsArray = new SlangShaderVariant[variants.arraySize];
@@ -132,8 +135,6 @@ namespace UnitySlangShader
             return slangShaderVariantMap;
         }
 
-        private static int totalVariantCount;
-        public static Dictionary<string, HashSet<SlangShaderVariant>> CurrentlyLoadedSlangShaderVariants = new Dictionary<string, HashSet<SlangShaderVariant>>();
         private static void Update()
         {
             int newVariantCount = getCurrentShaderVariantCollectionVariantCountWrapper();
@@ -264,7 +265,6 @@ namespace UnitySlangShader
         private static void CompileSlangShaderVariantsFromScenes(IEnumerable<string> scenes)
         {
             // Find all shaders
-            // TODO: Make this faster. Perhaps the importer itself can write into a static map on import?
             var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
                 .Select(x => AssetDatabase.GUIDToAssetPath(x))
                 .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
