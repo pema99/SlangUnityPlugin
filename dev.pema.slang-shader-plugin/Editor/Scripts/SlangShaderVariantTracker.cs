@@ -21,13 +21,29 @@ namespace UnitySlangShader
         #region Harmony patches
         private static Harmony harmonyInstance = new Harmony("pema.dev.slang-shader-plugin");
 
+        public static bool IsCompilingForBuild = false;
+        public static BuildTarget TargetForBuild = BuildTarget.NoTarget;
+
         [HarmonyPatch(typeof(BuildPipeline), nameof(BuildPipeline.BuildAssetBundles),
             new Type[] { typeof(string), typeof(BuildAssetBundleOptions), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int) })]
         private class HarmonyAssetBundleBuildHook0
         {
-            static bool Prefix()
+            static bool Prefix(BuildTarget targetPlatform)
             {
-                CompileSlangShaderVariantsFromScenes(new string[] { SceneManager.GetActiveScene().path });
+                IsCompilingForBuild = true;
+                TargetForBuild = targetPlatform;
+                try
+                {
+                    CompileSlangShaderVariantsFromScenes(new string[] { SceneManager.GetActiveScene().path });
+                }
+                catch
+                {
+                    throw;
+                }
+                finally
+                {
+                    IsCompilingForBuild = false;
+                }
                 return true;
             }
         }
@@ -36,12 +52,25 @@ namespace UnitySlangShader
             new Type[] { typeof(string), typeof(AssetBundleBuild[]), typeof(BuildAssetBundleOptions), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int) })]
         private class HarmonyAssetBundleBuildHook1
         {
-            static bool Prefix(AssetBundleBuild[] builds)
+            static bool Prefix(AssetBundleBuild[] builds, BuildTarget targetPlatform)
             {
-                List<string> scenePaths = new List<string>();
-                scenePaths.Add(SceneManager.GetActiveScene().path);
-                scenePaths.AddRange(builds.SelectMany(x => x.assetNames.Where(y => y.EndsWith(".unity"))));
-                CompileSlangShaderVariantsFromScenes(scenePaths.Distinct());
+                IsCompilingForBuild = true;
+                TargetForBuild = targetPlatform;
+                try
+                {
+                    List<string> scenePaths = new List<string>();
+                    scenePaths.Add(SceneManager.GetActiveScene().path);
+                    scenePaths.AddRange(builds.SelectMany(x => x.assetNames.Where(y => y.EndsWith(".unity"))));
+                    CompileSlangShaderVariantsFromScenes(scenePaths.Distinct());
+                }
+                catch
+                {
+                    throw;
+                }
+                finally
+                {
+                    IsCompilingForBuild = false;
+                }
                 return true;
             }
         }
@@ -50,9 +79,22 @@ namespace UnitySlangShader
             new Type[] { typeof(string[]), typeof(string), typeof(string), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int), typeof(BuildOptions), typeof(string[]) })]
         private class HarmonyPlayerBuildHook0
         {
-            static bool Prefix(string[] levels)
+            static bool Prefix(string[] levels, BuildTarget target)
             {
-                CompileSlangShaderVariantsFromScenes(levels.Distinct());
+                IsCompilingForBuild = true;
+                TargetForBuild = target;
+                try
+                {
+                    CompileSlangShaderVariantsFromScenes(levels.Distinct());
+                }
+                catch
+                {
+                    throw;
+                }
+                finally
+                {
+                    IsCompilingForBuild = false;
+                }
                 return true;
             }
         }
@@ -62,7 +104,20 @@ namespace UnitySlangShader
         {
             static bool Prefix(BuildPlayerOptions options)
             {
-                CompileSlangShaderVariantsFromScenes(options.scenes.Distinct());
+                IsCompilingForBuild = true;
+                TargetForBuild = options.target;
+                try
+                {
+                    CompileSlangShaderVariantsFromScenes(options.scenes.Distinct());
+                }
+                catch
+                {
+                    throw;
+                }
+                finally
+                {
+                    IsCompilingForBuild = false;
+                }
                 return true;
             }
         }

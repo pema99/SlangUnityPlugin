@@ -459,9 +459,9 @@ namespace UnitySlangShader
                 sb.AppendLine("1");
             }
 
-            private static (ShaderCompilerPlatform, string) GetShaderCompilerPlatformAndKeyword()
+            private static (ShaderCompilerPlatform, string) GetShaderCompilerPlatformAndKeyword(GraphicsDeviceType type)
             {
-                switch (SystemInfo.graphicsDeviceType)
+                switch (type)
                 {
                     case GraphicsDeviceType.Direct3D11: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D11");
                     case GraphicsDeviceType.OpenGLES2: return (ShaderCompilerPlatform.GLES20, "SHADER_API_GLES");
@@ -486,29 +486,32 @@ namespace UnitySlangShader
             {
                 Dictionary<string, string> directives = new Dictionary<string, string>();
 
+                BuildTarget buildTarget = SlangShaderVariantTracker.IsCompilingForBuild ? SlangShaderVariantTracker.TargetForBuild : EditorUserBuildSettings.activeBuildTarget;
+                GraphicsDeviceType gfxType = PlayerSettings.GetGraphicsAPIs(buildTarget).FirstOrDefault();
+
                 // Base defines
                 directives.Add("SHADER_TARGET", "50"); // sm 5.0 assumed
 
                 // Platform defines
-                (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword();
+                (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword(gfxType);
                 directives.Add(platformKw, "1");
                 
-                var builtinDefines = ShaderUtil.GetShaderPlatformKeywordsForBuildTarget(compilerPlatform, EditorUserBuildSettings.activeBuildTarget);
+                var builtinDefines = ShaderUtil.GetShaderPlatformKeywordsForBuildTarget(compilerPlatform, buildTarget);
                 foreach (BuiltinShaderDefine builtinDefine in builtinDefines)
                 {
                     directives.Add(Enum.GetName(typeof(BuiltinShaderDefine), builtinDefine), "1");
                 }
 
-                if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS ||
-                    EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android ||
-                    EditorUserBuildSettings.activeBuildTarget == BuildTarget.tvOS)
+                if (buildTarget == BuildTarget.iOS ||
+                    buildTarget == BuildTarget.Android ||
+                    buildTarget == BuildTarget.tvOS)
                 {
                     directives.Add("SHADER_API_MOBILE", "1");
                 }
 
-                if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLCore ||
-                    SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES2 ||
-                    SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES3)
+                if (gfxType == GraphicsDeviceType.OpenGLCore ||
+                    gfxType == GraphicsDeviceType.OpenGLES2 ||
+                    gfxType == GraphicsDeviceType.OpenGLES3)
                 {
                     directives.Add("SHADER_TARGET_GLSL ", "1");
                 }
