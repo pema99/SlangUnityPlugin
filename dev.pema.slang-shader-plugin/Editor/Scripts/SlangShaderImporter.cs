@@ -225,7 +225,8 @@ namespace UnitySlangShader
 
             public void HandleProgramBlock(HLSLProgramBlock programBlock)
             {
-                string fullCodeWithLineStart = $"#line {programBlock.Span.Start.Line - 1}\n{programBlock.FullCode}";
+                string preamble = SlangShaderSnippets.SlangSupportPreamble;
+                string fullCodeWithLineStart = $"{preamble}\n#line {programBlock.Span.Start.Line - 1}\n{programBlock.FullCode}";
 
                 // Setup
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
@@ -487,20 +488,6 @@ namespace UnitySlangShader
 
                 // Base defines
                 directives.Add("SHADER_TARGET", "50"); // sm 5.0 assumed
-                directives.Add("UNITY_COMPILER_DXC", "1"); // no combined sampler objects
-                directives.Add("UNITY_UNIFIED_SHADER_PRECISION_MODEL", "1"); // to deal with issues with half
-                directives.Add("min16float", "float");
-                directives.Add("min16float1", "float1");
-                directives.Add("min16float2", "float2");
-                directives.Add("min16float3", "float3");
-                directives.Add("min16float4", "float4");
-                for (int i = 0; i < 4; i++)
-                {
-                    for (int j = 0; j < 4; j++)
-                    {
-                        directives.Add($"min16float{i + 1}x{j + 1}", $"float{i + 1}x{j + 1}");
-                    }
-                }
 
                 // Platform defines
                 (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword();
