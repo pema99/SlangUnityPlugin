@@ -18,7 +18,6 @@ namespace UnitySlangShader
     [InitializeOnLoad]
     public class SlangShaderVariantTracker
     {
-        // TODO: Player build
         #region Harmony patches
         private static Harmony harmonyInstance = new Harmony("pema.dev.slang-shader-plugin");
 
@@ -43,6 +42,27 @@ namespace UnitySlangShader
                 scenePaths.Add(SceneManager.GetActiveScene().path);
                 scenePaths.AddRange(builds.SelectMany(x => x.assetNames.Where(y => y.EndsWith(".unity"))));
                 CompileSlangShaderVariantsFromScenes(scenePaths.Distinct());
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(BuildPipeline), "BuildPlayerInternal",
+            new Type[] { typeof(string[]), typeof(string), typeof(string), typeof(BuildTargetGroup), typeof(BuildTarget), typeof(int), typeof(BuildOptions), typeof(string[]) })]
+        private class HarmonyPlayerBuildHook0
+        {
+            static bool Prefix(string[] levels)
+            {
+                CompileSlangShaderVariantsFromScenes(levels.Distinct());
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(BuildPlayerWindow.DefaultBuildMethods), nameof(BuildPlayerWindow.DefaultBuildMethods.BuildPlayer))]
+        private class HarmonyPlayerBuildHook1
+        {
+            static bool Prefix(BuildPlayerOptions options)
+            {
+                CompileSlangShaderVariantsFromScenes(options.scenes.Distinct());
                 return true;
             }
         }
