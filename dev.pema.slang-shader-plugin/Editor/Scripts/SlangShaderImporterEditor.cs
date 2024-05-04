@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace UnitySlangShader
 {
@@ -13,145 +14,134 @@ namespace UnitySlangShader
         private readonly string foldoutGeneratedShaderID = $"{nameof(SlangShaderImporterEditor)}.foldoutGeneratedShader";
         private readonly string foldoutVariantsID = $"{nameof(SlangShaderImporterEditor)}.foldoutVariants";
 
-        private Vector2 diagScrollPosition = Vector2.zero;
-        private GUIStyle statusInfoStyle;
-        private GUIStyle evenStyle;
-        private GUIContent errorIconContent;
-        private GUIContent warnIconContent;
-
-        private Vector2 variantScrollPosition = Vector2.zero;
-
         public override bool showImportedObject => false;
+        public override bool HasModified() => false;
+        protected override bool needsApplyRevert => false;
 
-        public override void OnInspectorGUI()
+        public override VisualElement CreateInspectorGUI()
         {
             var importer = target as SlangShaderImporter;
-            if (importer == null) return;
+            if (importer == null) return null;
 
-            bool foldoutSource = SessionState.GetBool(foldoutSourceID, false);
-            SessionState.SetBool(foldoutSourceID, EditorGUILayout.Foldout(foldoutSource, "Source code"));
-            if (foldoutSource)
-            {
-                using (new EditorGUI.DisabledScope(true))
+            VisualElement root = new VisualElement();
+
+            var sourceCodeArea = new TextField();
+            sourceCodeArea.SetValueWithoutNotify(File.ReadAllText(importer.assetPath));
+            sourceCodeArea.SetEnabled(false);
+            var sourceCodeFoldout = new Foldout() { text = "Source code" };
+            sourceCodeFoldout.contentContainer.style.marginLeft = 0;
+            sourceCodeFoldout.Add(sourceCodeArea);
+            sourceCodeFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutSourceID, false));
+            sourceCodeFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutSourceID, evt.newValue));
+            root.Add(sourceCodeFoldout);
+
+            var generatedSourceCodeArea = new TextField();
+            generatedSourceCodeArea.SetValueWithoutNotify(importer.GeneratedSourceCode);
+            generatedSourceCodeArea.SetEnabled(false);
+            var generatedSourceCodeFoldout = new Foldout() { text = "Generated shader" };
+            generatedSourceCodeFoldout.contentContainer.style.marginLeft = 0;
+            generatedSourceCodeFoldout.Add(generatedSourceCodeArea);
+            generatedSourceCodeFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutGeneratedShaderID, false));
+            generatedSourceCodeFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutGeneratedShaderID, evt.newValue));
+            root.Add(generatedSourceCodeFoldout);
+
+            var variantsArea = new ListView(importer.GeneratedVariants, -1,
+                () =>
                 {
-                    EditorGUILayout.TextArea(File.ReadAllText(importer.assetPath));
-                }
-            }
-
-            bool foldoutGeneratedShader = SessionState.GetBool(foldoutGeneratedShaderID, false);
-            SessionState.SetBool(foldoutGeneratedShaderID, EditorGUILayout.Foldout(foldoutGeneratedShader, "Generated shader"));
-            if (foldoutGeneratedShader)
-            {
-                using (new EditorGUI.DisabledScope(true))
+                    var label = new Label();
+                    label.style.whiteSpace = WhiteSpace.Normal;
+                    label.style.paddingBottom = 3;
+                    label.style.unityTextAlign = TextAnchor.MiddleLeft;
+                    label.AddToClassList("unity-box");
+                    return label;
+                },
+                (elem, idx) =>
                 {
-                    EditorGUILayout.TextArea(importer.GeneratedSourceCode);
-                }
-            }
+                    elem.style.backgroundColor = idx % 2 == 0 ? new StyleColor(new Color(0.2f, 0.2f, 0.2f)) : new StyleColor(new Color(0.26f, 0.26f, 0.26f));
+                    elem.style.height = new StyleLength(StyleKeyword.Auto);
+                    string text = string.Join(" ", importer.GeneratedVariants[idx].Keywords);
+                    if (string.IsNullOrEmpty(text)) text = "<Empty variant>";
+                    (elem as Label).text = text;
+                });
+            variantsArea.selectionType = SelectionType.None;
+            variantsArea.style.maxHeight = Mathf.Min(importer.GeneratedVariants.Length * 20f + 40f, 150f);
+            variantsArea.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f);
+            var variantsFoldout = new Foldout() { text = "Generated variants" };
+            variantsFoldout.contentContainer.style.marginLeft = 0;
+            variantsFoldout.Add(variantsArea);
+            variantsFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutVariantsID, false));
+            variantsFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutVariantsID, evt.newValue));
+            root.Add(variantsFoldout);
 
-            bool foldoutVariants = SessionState.GetBool(foldoutVariantsID, false);
-            SessionState.SetBool(foldoutVariantsID, EditorGUILayout.Foldout(foldoutVariants, "Generated variants"));
-            if (foldoutVariants)
-            {
-                float height = Mathf.Min(importer.GeneratedVariants.Length * 20f + 40f, 150f);
-                variantScrollPosition = GUILayout.BeginScrollView(variantScrollPosition, EditorStyles.helpBox, GUILayout.MinHeight(height));
-                foreach (var variant in importer.GeneratedVariants)
+            var diagsLabel = new Label("Diagnostics");
+            diagsLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            diagsLabel.style.marginTop = 4;
+            var orderedDiags = importer.Diagnostics.OrderBy(x => x.Warning ? 1 : 0).ThenBy(x => x.File).ThenBy(x => x.Line).ToArray();
+            var diagsArea = new ListView(orderedDiags, 20,
+                () =>
                 {
-                    string name = string.Join(" ", variant.Keywords);
-                    if (name.Trim() == string.Empty) name = "<Empty variant>";
-                    EditorGUILayout.LabelField(name, EditorStyles.helpBox);
-                }
-                GUILayout.EndScrollView();
-            }
+                    var icon = new Image();
+                    icon.style.width = icon.style.height = icon.style.minWidth = icon.style.minHeight = 16;
+                    icon.style.marginLeft = icon.style.marginTop = 2;
 
-            DrawErrorList(importer.Diagnostics);
+                    var msgLabel = new Label() { name = "msg-label" };
+                    msgLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                    msgLabel.style.overflow = Overflow.Hidden;
 
-            Apply();
+                    var fileLabel = new Label() { name = "file-label" };
+                    fileLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                    fileLabel.style.marginLeft = new StyleLength(StyleKeyword.Auto);
+                    fileLabel.style.fontSize = EditorStyles.miniLabel.fontSize;
+                    fileLabel.RegisterCallback<GeometryChangedEvent>(evt => msgLabel.style.borderRightWidth = fileLabel.resolvedStyle.width + 22);
 
-            base.ApplyRevertGUI();
-        }
-
-        private void DrawErrorList(SlangShaderDiagnostic[] diags)
-        {
-            if (diags == null)
-                diags = new SlangShaderDiagnostic[0];
-
-            diags = diags.OrderBy(x => x.Warning ? 1 : 0).ThenBy(x => x.File).ThenBy(x => x.Line).ToArray();
-
-            if (statusInfoStyle == null) statusInfoStyle = new GUIStyle("CN StatusInfo");
-            if (errorIconContent == null) errorIconContent = EditorGUIUtility.IconContent("console.erroricon");
-            if (warnIconContent == null) warnIconContent = EditorGUIUtility.IconContent("console.warnicon");
-            if (evenStyle == null) evenStyle = new GUIStyle("CN EntryBackEven");
-
-            GUILayout.Label("Diagnostics:", EditorStyles.boldLabel);
-
-            int n = diags.Length;
-            float height = Mathf.Min(n * 20f + 40f, 150f);
-            diagScrollPosition = GUILayout.BeginScrollView(diagScrollPosition, GUI.skin.box, GUILayout.MinHeight(height));
-
-            EditorGUIUtility.SetIconSize(new Vector2(16.0f, 16.0f));
-            float lineHeight = statusInfoStyle.CalcHeight(errorIconContent, 100);
-
-            Event e = Event.current;
-            int errorListID = GUIUtility.GetControlID(nameof(SlangShaderImporterEditor).GetHashCode(), FocusType.Passive);
-            for (int i = 0; i < n; ++i)
-            {
-                Rect r = EditorGUILayout.GetControlRect(false, lineHeight);
-
-                string err = diags[i].Text;
-                bool warn = diags[i].Warning;
-                string fileName = diags[i].File;
-                int line = diags[i].Line;
-
-                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
+                    var container = new VisualElement();
+                    container.style.flexDirection = FlexDirection.Row;
+                    container.Add(icon);
+                    container.Add(msgLabel);
+                    container.Add(fileLabel);
+                    return container;
+                },
+                (elem, idx) =>
                 {
-                    GUIUtility.keyboardControl = errorListID;
-                    if (e.clickCount == 2)
+                    elem.style.backgroundColor = idx % 2 == 0 ? new StyleColor(new Color(0.2f, 0.2f, 0.2f)) : new StyleColor(new Color(0.26f, 0.26f, 0.26f));
+
+                    var diag = orderedDiags[idx];
+
+                    elem.Q<Label>("msg-label").text = diag.Text;
+
+                    elem.Q<Image>().image = EditorGUIUtility.FindTexture(diag.Warning ? "console.warnicon" : "console.erroricon");
+
+                    var fileLabel = elem.Q<Label>("file-label");
+                    fileLabel.style.display = DisplayStyle.Flex;
+                    string location = string.Empty;
+                    if (diag.Line == 0)
                     {
-                        Object asset = string.IsNullOrEmpty(fileName) ? null : AssetDatabase.LoadMainAssetAtPath(fileName);
-                        AssetDatabase.OpenAsset(asset, line);
-                        GUIUtility.ExitGUI();
-                    }
-                    e.Use();
-                }
+                        if (string.IsNullOrEmpty(diag.File))
+                            fileLabel.style.display = DisplayStyle.None;
 
-                // background
-                if (e.type == EventType.Repaint)
-                {
-                    if ((i & 1) == 0)
+                        location = diag.File;
+                    }
+                    else if (!string.IsNullOrEmpty(diag.File))
                     {
-                        GUIStyle st = evenStyle;
-                        st.Draw(r, false, false, false, false);
+                        location = $"{diag.File}:{diag.Line}";
                     }
-                }
+                    fileLabel.text = location;
+                });
+            diagsArea.itemsChosen += (chosen) =>
+            {
+                var diag = (SlangShaderDiagnostic)chosen.First();
+                Object asset = string.IsNullOrEmpty(diag.File) ? null : AssetDatabase.LoadMainAssetAtPath(diag.File);
+                AssetDatabase.OpenAsset(asset, diag.Line);
+            };
+            diagsArea.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f);
+            diagsArea.style.paddingBottom = diagsArea.style.paddingTop = diagsArea.style.paddingLeft = diagsArea.style.paddingRight = 4;
+            diagsArea.style.maxHeight = Mathf.Min(orderedDiags.Length * 20f + 40f, 150f);
+            diagsArea.selectionType = SelectionType.Single;
 
-                // error location on the right side
-                Rect locRect = r;
-                locRect.xMin = locRect.xMax;
-                if (line > 0)
-                {
-                    GUIContent gc;
-                    if (string.IsNullOrEmpty(fileName))
-                        gc = EditorGUIUtility.TrTempContent(line.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    else
-                        gc = EditorGUIUtility.TrTempContent(fileName + ":" + line.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            root.Add(diagsLabel);
+            root.Add(diagsArea);
 
-                    // calculate size so we can right-align it
-                    Vector2 size = EditorStyles.miniLabel.CalcSize(gc);
-                    locRect.xMin -= size.x;
-                    GUI.Label(locRect, gc, EditorStyles.miniLabel);
-                    locRect.xMin -= 2;
-                    // ensure some minimum width so that platform field next will line up
-                    if (locRect.width < 30)
-                        locRect.xMin = locRect.xMax - 30;
-                }
-
-                // error message
-                Rect msgRect = r;
-                msgRect.xMax = locRect.xMin;
-                GUI.Label(msgRect, new GUIContent(err, warn ? warnIconContent.image : errorIconContent.image), statusInfoStyle);
-            }
-            EditorGUIUtility.SetIconSize(Vector2.zero);
-            GUILayout.EndScrollView();
+            return root;
         }
     }
 }
