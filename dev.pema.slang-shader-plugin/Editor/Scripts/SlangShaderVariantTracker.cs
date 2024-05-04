@@ -339,16 +339,15 @@ namespace UnitySlangShader
 
         private static void CompileSlangShaderVariantsFromScenes(IEnumerable<string> scenes)
         {
-            // Find all shaders
-            var slangShaderPaths = AssetDatabase.FindAssets("t:Shader")
-                .Select(x => AssetDatabase.GUIDToAssetPath(x))
-                .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
-                .ToHashSet();
-
             // Gather from each scene
             HashSet<SlangShaderImporter> shadersToReimport = new HashSet<SlangShaderImporter>();
             foreach (string path in scenes)
             {
+                // Find the depended upon shaders
+                var slangShaderPaths = AssetDatabase.GetDependencies(path, true)
+                    .Where(x => AssetDatabase.GetImporterType(x) == typeof(SlangShaderImporter))
+                    .ToHashSet();
+
                 // No need to re-open if the scene is already open
                 if (path != SceneManager.GetActiveScene().path)
                 {
