@@ -655,11 +655,6 @@ namespace UnitySlangShader
                 }
             }
 
-            foreach (string dependencyFile in editor.DependencyFiles)
-            {
-                ctx.DependsOnSourceAsset(dependencyFile);
-            }
-
             var shaderAsset = ShaderUtil.CreateShaderAsset(ctx, GeneratedSourceCode, true);
 
             var messages = ShaderUtil.GetShaderMessages(shaderAsset);
@@ -699,6 +694,12 @@ namespace UnitySlangShader
                 }
             }
 
+            var filesFromDiags = Diagnostics.Where(x => !string.IsNullOrEmpty(x.File)).Select(x => x.File);
+            foreach (string dependencyFile in editor.DependencyFiles.Concat(filesFromDiags))
+            {
+                ctx.DependsOnSourceAsset(dependencyFile);
+            }
+
             // Update any inspectors
             if (OnWillReimport != null)
                 OnWillReimport(this);
@@ -706,6 +707,13 @@ namespace UnitySlangShader
 
         private static void LogDiagnostic(List<SlangShaderDiagnostic> diags, string message, string file, int line, bool warning)
         {
+            file = file.Replace('\\', '/');
+            string basePath = Path.GetDirectoryName(Application.dataPath).Replace('\\', '/');
+            if (file.StartsWith(basePath))
+            {
+                file = file.Substring(basePath.Length + 1);
+            }
+
             diags.Add(new SlangShaderDiagnostic { Text = message, File = file, Line = line, Warning = warning });
         }
     }
