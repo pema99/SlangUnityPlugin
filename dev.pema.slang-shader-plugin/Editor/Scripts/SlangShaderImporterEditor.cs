@@ -14,19 +14,25 @@ namespace UnitySlangShader
         private readonly string foldoutGeneratedShaderID = $"{nameof(SlangShaderImporterEditor)}.foldoutGeneratedShader";
         private readonly string foldoutVariantsID = $"{nameof(SlangShaderImporterEditor)}.foldoutVariants";
 
+        private VisualElement root;
+
         public override bool showImportedObject => false;
         public override bool HasModified() => false;
         protected override bool needsApplyRevert => false;
 
-        public override VisualElement CreateInspectorGUI()
+        private void Rebuild(SlangShaderImporter updatedImporter)
         {
             var importer = target as SlangShaderImporter;
-            if (importer == null) return null;
+            if (importer == null || root == null)
+                return;
 
-            VisualElement root = new VisualElement();
+            if (updatedImporter.assetPath != importer.assetPath)
+                return;
+
+            root.Clear();
 
             var sourceCodeArea = new TextField();
-            sourceCodeArea.SetValueWithoutNotify(File.ReadAllText(importer.assetPath));
+            sourceCodeArea.SetValueWithoutNotify(File.ReadAllText(updatedImporter.assetPath));
             sourceCodeArea.SetEnabled(false);
             var sourceCodeFoldout = new Foldout() { text = "Source code" };
             sourceCodeFoldout.contentContainer.style.marginLeft = 0;
@@ -36,7 +42,7 @@ namespace UnitySlangShader
             root.Add(sourceCodeFoldout);
 
             var generatedSourceCodeArea = new TextField();
-            generatedSourceCodeArea.SetValueWithoutNotify(importer.GeneratedSourceCode);
+            generatedSourceCodeArea.SetValueWithoutNotify(updatedImporter.GeneratedSourceCode);
             generatedSourceCodeArea.SetEnabled(false);
             var generatedSourceCodeFoldout = new Foldout() { text = "Generated shader" };
             generatedSourceCodeFoldout.contentContainer.style.marginLeft = 0;
@@ -45,7 +51,7 @@ namespace UnitySlangShader
             generatedSourceCodeFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutGeneratedShaderID, evt.newValue));
             root.Add(generatedSourceCodeFoldout);
 
-            var variantsArea = new ListView(importer.GeneratedVariants, -1,
+            var variantsArea = new ListView(updatedImporter.GeneratedVariants, -1,
                 () =>
                 {
                     var label = new Label();
@@ -59,12 +65,12 @@ namespace UnitySlangShader
                 {
                     elem.style.backgroundColor = idx % 2 == 0 ? new StyleColor(new Color(0.2f, 0.2f, 0.2f)) : new StyleColor(new Color(0.26f, 0.26f, 0.26f));
                     elem.style.height = new StyleLength(StyleKeyword.Auto);
-                    string text = string.Join(" ", importer.GeneratedVariants[idx].Keywords);
+                    string text = string.Join(" ", updatedImporter.GeneratedVariants[idx].Keywords);
                     if (string.IsNullOrEmpty(text)) text = "<Empty variant>";
                     (elem as Label).text = text;
                 });
             variantsArea.selectionType = SelectionType.None;
-            variantsArea.style.maxHeight = Mathf.Min(importer.GeneratedVariants.Length * 20f + 40f, 150f);
+            variantsArea.style.maxHeight = Mathf.Min(updatedImporter.GeneratedVariants.Length * 20f + 40f, 150f);
             variantsArea.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f);
             var variantsFoldout = new Foldout() { text = "Generated variants" };
             variantsFoldout.contentContainer.style.marginLeft = 0;
@@ -76,7 +82,7 @@ namespace UnitySlangShader
             var diagsLabel = new Label("Diagnostics");
             diagsLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
             diagsLabel.style.marginTop = 4;
-            var orderedDiags = importer.Diagnostics.OrderBy(x => x.Warning ? 1 : 0).ThenBy(x => x.File).ThenBy(x => x.Line).ToArray();
+            var orderedDiags = updatedImporter.Diagnostics.OrderBy(x => x.Warning ? 1 : 0).ThenBy(x => x.File).ThenBy(x => x.Line).ToArray();
             var diagsArea = new ListView(orderedDiags, 20,
                 () =>
                 {
@@ -140,6 +146,18 @@ namespace UnitySlangShader
 
             root.Add(diagsLabel);
             root.Add(diagsArea);
+        }
+
+        public override VisualElement CreateInspectorGUI()
+        {
+            var importer = target as SlangShaderImporter;
+            if (importer == null) return null;
+
+            root = new VisualElement();
+            Rebuild(importer);
+
+            SlangShaderImporter.OnReimported -= Rebuild;
+            SlangShaderImporter.OnReimported += Rebuild;
 
             return root;
         }

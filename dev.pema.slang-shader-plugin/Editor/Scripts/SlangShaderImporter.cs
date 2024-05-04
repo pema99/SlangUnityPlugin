@@ -599,6 +599,8 @@ namespace UnitySlangShader
             return requestedVariants;
         }
 
+        public static event Action<SlangShaderImporter> OnReimported;
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
             SlangShaderVariantTracker.SlangShaderPaths.Add(ctx.assetPath);
@@ -696,6 +698,9 @@ namespace UnitySlangShader
                     ctx.LogImportError($"{ctx.assetPath}({diag.Line}): {diag.Text}");
                 }
             }
+
+            if (OnReimported != null)
+                OnReimported(this);
         }
 
         private static void LogDiagnostic(List<SlangShaderDiagnostic> diags, string message, string file, int line, bool warning)
