@@ -695,7 +695,7 @@ namespace UnitySlangShader
             }
 
             var filesFromDiags = Diagnostics.Where(x => !string.IsNullOrEmpty(x.File)).Select(x => x.File);
-            foreach (string dependencyFile in editor.DependencyFiles.Concat(filesFromDiags))
+            foreach (string dependencyFile in editor.DependencyFiles.Concat(filesFromDiags).Distinct())
             {
                 ctx.DependsOnSourceAsset(dependencyFile);
             }
