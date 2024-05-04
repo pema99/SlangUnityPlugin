@@ -599,7 +599,7 @@ namespace UnitySlangShader
             return requestedVariants;
         }
 
-        public static event Action<SlangShaderImporter> OnReimported;
+        public static event Action<SlangShaderImporter> OnWillReimport;
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
@@ -699,8 +699,9 @@ namespace UnitySlangShader
                 }
             }
 
-            if (OnReimported != null)
-                OnReimported(this);
+            // Update any inspectors
+            if (OnWillReimport != null)
+                OnWillReimport(this);
         }
 
         private static void LogDiagnostic(List<SlangShaderDiagnostic> diags, string message, string file, int line, bool warning)

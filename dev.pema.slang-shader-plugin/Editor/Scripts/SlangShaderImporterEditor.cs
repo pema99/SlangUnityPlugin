@@ -156,8 +156,8 @@ namespace UnitySlangShader
             root = new VisualElement();
             Rebuild(importer);
 
-            SlangShaderImporter.OnReimported -= Rebuild;
-            SlangShaderImporter.OnReimported += Rebuild;
+            SlangShaderImporter.OnWillReimport -= Rebuild;
+            SlangShaderImporter.OnWillReimport += Rebuild;
 
             return root;
         }
