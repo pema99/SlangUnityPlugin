@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -174,30 +175,28 @@ namespace UnitySlangShader.SlangAPI
             spSetDiagnosticCallback(request, DiagnosticCallback, (IntPtr)handle);
         }
 
-        private static readonly string[] ignoreDiagnosticsFrom = new string[]
-        {
-            "Data/CGIncludes/UnityCG.cginc", "Data/CGIncludes/HLSLSupport.cginc", "Data/CGIncludes/UnityShaderVariables.cginc",
-            "Data/CGIncludes/UnityShadowLibrary.cginc", "Data/CGIncludes/UnityStandardUtils.cginc", "Data/CGIncludes/UnityStandardShadow.cginc",
-            "Data/CGIncludes/UnityStandardBRDF.cginc", "Data/CGIncludes/UnityImageBasedLighting.cginc", "Data/CGIncludes/UnityGlobalIllumination.cginc",
-            "Data/CGIncludes/UnityStandardConfig.cginc", "Data/CGIncludes/UnityGBuffer.cginc", "Data/CGIncludes/UnityDeprecated.cginc", "Data/CGIncludes/Lighting.cginc",
-            "Data/CGIncludes/AutoLight.cginc"
-        };
-
         private static void DiagnosticCallback(IntPtr message, IntPtr userData)
         {
             string messageStr = Marshal.PtrToStringAnsi(message);
-            string[] splits = messageStr.Split(new string[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
-            bool ignored =
-                splits.Length > 0 &&
-                ignoreDiagnosticsFrom.Any(x => splits[0].Contains(x)) &&
-                !splits[0].Contains("error");
-            // Filter out warnings from builtin files
-            if (!ignored)
+
+            // Filter out warnings (but not errors) from builtin files
+            int parenIdx = messageStr.IndexOf('(');
+            if (parenIdx > 0)
             {
-                GCHandle selfHandle = (GCHandle)userData;
-                CompileRequest self = selfHandle.Target as CompileRequest;
-                self?.diagnostics.Add(messageStr);
+                string file = messageStr.Substring(0, parenIdx);
+                int dataIndex = file.LastIndexOf("Data/CGIncludes/");
+                if (dataIndex > 0)
+                {
+                    if (!messageStr.Contains("error"))
+                    {
+                        return;
+                    }
+                }
             }
+
+            GCHandle selfHandle = (GCHandle)userData;
+            CompileRequest self = selfHandle.Target as CompileRequest;
+            self?.diagnostics.Add(messageStr);
         }
 
         public void SetCodeGenTarget(SlangCompileTarget target) => spSetCodeGenTarget(request, target);
