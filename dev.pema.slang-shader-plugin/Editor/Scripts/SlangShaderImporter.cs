@@ -639,7 +639,9 @@ namespace UnitySlangShader
                 .ToHashSet();
             foreach (SlangShaderVariant variant in GeneratedVariants)
             {
-                if (variant.Keywords.Except(allKeywords).Any())
+                if (variant.Keywords
+                    .Except(allKeywords)
+                    .Any(x => !x.StartsWith("SHADER_API_") && !x.StartsWith("SHADER_TARGET_")))
                 {
                     SlangShaderVariantTracker.ResetTrackedVariants();
                     return; // Early out so we don't print diagnostics from this invalid compilation.
