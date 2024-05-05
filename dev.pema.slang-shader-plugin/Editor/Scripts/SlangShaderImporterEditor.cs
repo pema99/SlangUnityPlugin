@@ -143,6 +143,10 @@ namespace UnitySlangShader
             diagsArea.style.paddingBottom = diagsArea.style.paddingTop = diagsArea.style.paddingLeft = diagsArea.style.paddingRight = 4;
             diagsArea.style.maxHeight = Mathf.Min(orderedDiags.Length * 20f + 40f, 150f);
             diagsArea.selectionType = SelectionType.Single;
+            if (orderedDiags.Length == 0)
+            {
+                diagsArea.Q<Label>(className: BaseListView.emptyLabelUssClassName).style.display = DisplayStyle.None;
+            }
 
             root.Add(diagsLabel);
             root.Add(diagsArea);
