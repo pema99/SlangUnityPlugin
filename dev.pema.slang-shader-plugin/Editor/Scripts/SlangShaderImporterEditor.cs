@@ -84,9 +84,18 @@ namespace UnitySlangShader
             variantsFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutVariantsID, evt.newValue));
             root.Add(variantsFoldout);
 
+            var clearVariantCacheButton = new Button() { text = "Clear variant cache", tooltip = "Press me if your shader isn't compiling properly." };
+            clearVariantCacheButton.style.marginTop = 6;
+            clearVariantCacheButton.style.minWidth = clearVariantCacheButton.style.width = 120;
+            clearVariantCacheButton.style.alignSelf = Align.FlexEnd;
+            clearVariantCacheButton.clicked += () =>
+            {
+                SlangShaderVariantTracker.ResetTrackedVariants();
+            };
+
             var applyButton = new Button() { text = "Apply changes" };
             applyButton.style.marginTop = 6;
-            applyButton.style.minWidth = applyButton.style.width = 100;
+            applyButton.style.minWidth = applyButton.style.width = 120;
             applyButton.style.alignSelf = Align.FlexEnd;
             applyButton.SetEnabled(false);
             applyButton.clicked += () =>
@@ -220,7 +229,12 @@ namespace UnitySlangShader
             root.Add(diagsLabel);
             root.Add(diagsArea);
 
-            root.Add(applyButton);
+            var buttons = new VisualElement();
+            buttons.style.alignSelf = Align.FlexEnd;
+            buttons.style.flexDirection = FlexDirection.Row;
+            buttons.Add(clearVariantCacheButton);
+            buttons.Add(applyButton);
+            root.Add(buttons);
         }
 
         public override VisualElement CreateInspectorGUI()
