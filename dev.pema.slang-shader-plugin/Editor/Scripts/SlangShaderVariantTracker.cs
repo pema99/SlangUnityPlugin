@@ -12,6 +12,7 @@ using UnityEngine.SceneManagement;
 using UnityEditor.Rendering;
 using UnityEditor.Build;
 using HarmonyLib;
+using UnityEngine.Rendering;
 
 namespace UnitySlangShader
 {
@@ -201,7 +202,7 @@ namespace UnitySlangShader
                     for (int variantIdx = 0; variantIdx < variants.arraySize; variantIdx++)
                     {
                         var keywords = variants.GetArrayElementAtIndex(variantIdx).FindPropertyRelative("keywords").stringValue.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        variantsArray[variantIdx] = new SlangShaderVariant(keywords.ToHashSet());
+                        variantsArray[variantIdx] = new SlangShaderVariant(EditorUserBuildSettings.activeBuildTarget, SystemInfo.graphicsDeviceType, keywords.ToHashSet());
                     }
                     slangShaderVariantMap[shaderPath] = variantsArray.ToHashSet();
                 }
@@ -265,6 +266,9 @@ namespace UnitySlangShader
             string prevEditorPath = CodeEditor.CurrentEditorPath;
             var prevLogFilter = Debug.unityLogger.filterLogType;
 
+            BuildTarget buildTarget = IsCompilingForBuild ? TargetForBuild : EditorUserBuildSettings.activeBuildTarget;
+            GraphicsDeviceType gfxType = IsCompilingForBuild ? PlayerSettings.GetGraphicsAPIs(buildTarget).FirstOrDefault() : SystemInfo.graphicsDeviceType;
+
             try
             {
                 // Set to dummy editor
@@ -295,7 +299,7 @@ namespace UnitySlangShader
                     else if (isParsingVariants)
                     {
                         string[] keywords = lineText == "<no keywords defined>" ? Array.Empty<string>() : lineText.Split(' ');
-                        result.Add(new SlangShaderVariant(keywords.ToHashSet()));
+                        result.Add(new SlangShaderVariant(buildTarget, gfxType, keywords.ToHashSet()));
                     }
                 }
             }
@@ -310,8 +314,8 @@ namespace UnitySlangShader
             foreach (var variant in result)
             {
                 resultWithStereoVariants.Add(variant);
-                resultWithStereoVariants.Add(new SlangShaderVariant(variant.Keywords.Append("STEREO_INSTANCING_ON").ToHashSet()));
-                resultWithStereoVariants.Add(new SlangShaderVariant(variant.Keywords.Append("UNITY_SINGLE_PASS_STEREO").ToHashSet()));
+                resultWithStereoVariants.Add(new SlangShaderVariant(buildTarget, gfxType, variant.Keywords.Append("STEREO_INSTANCING_ON").ToHashSet()));
+                resultWithStereoVariants.Add(new SlangShaderVariant(buildTarget, gfxType, variant.Keywords.Append("UNITY_SINGLE_PASS_STEREO").ToHashSet()));
             }
 
             return resultWithStereoVariants;

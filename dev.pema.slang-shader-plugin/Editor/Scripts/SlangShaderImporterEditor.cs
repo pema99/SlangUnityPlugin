@@ -65,13 +65,15 @@ namespace UnitySlangShader
                 {
                     elem.style.backgroundColor = idx % 2 == 0 ? new StyleColor(new Color(0.2f, 0.2f, 0.2f)) : new StyleColor(new Color(0.26f, 0.26f, 0.26f));
                     elem.style.height = new StyleLength(StyleKeyword.Auto);
-                    string text = string.Join(" ", updatedImporter.GeneratedVariants[idx].Keywords);
-                    if (string.IsNullOrEmpty(text)) text = "<Empty variant>";
+                    var variant = updatedImporter.GeneratedVariants[idx];
+                    string text = $"Graphics Backend: {variant.GraphicsBackend}\nKeywords: {string.Join(" ", variant.Keywords)}";
+                    if (variant.Keywords.Count == 0) text += "<Empty variant>";
                     (elem as Label).text = text;
                 });
             variantsArea.selectionType = SelectionType.None;
-            variantsArea.style.maxHeight = Mathf.Min(updatedImporter.GeneratedVariants.Length * 20f + 40f, 150f);
+            variantsArea.style.maxHeight = Mathf.Min(updatedImporter.GeneratedVariants.Length * 60f + 40f, 250f);
             variantsArea.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f);
+            variantsArea.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight;
             var variantsFoldout = new Foldout() { text = "Generated variants" };
             variantsFoldout.contentContainer.style.marginLeft = 0;
             variantsFoldout.Add(variantsArea);

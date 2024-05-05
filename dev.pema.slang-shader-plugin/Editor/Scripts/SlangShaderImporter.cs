@@ -214,7 +214,10 @@ namespace UnitySlangShader
 
                     if (pragma[0].StartsWith("multi_compile") ||
                         pragma[0] == "shader_feature" ||
-                        pragma[0] == "skip_variants")
+                        pragma[0] == "skip_variants" ||
+                        pragma[0] == "only_renderers" ||
+                        pragma[0] == "exclude_renderers" ||
+                        pragma[0] == "hardware_tier_variants")
                     {
                         sb.AppendLine($"#pragma {string.Join(" ", pragma)}");
                     }
@@ -266,6 +269,7 @@ namespace UnitySlangShader
                                     includePaths,
                                     predefinedDirectives,
                                     variantsToGenerate[variantIdx].Keywords,
+                                    variantsToGenerate[variantIdx].PlatformKeywords,
                                     entryPoints,
                                     out perThreadDiagnostic[variantIdx],
                                     out perThreadEntryPoints[variantIdx],
@@ -324,6 +328,7 @@ namespace UnitySlangShader
                 string[] includePaths,
                 Dictionary<string, string> predefinedDirectives,
                 HashSet<string> keywords,
+                string[] platformKeywords,
                 List<(string stage, string entryName)> knownEntryPoints,
                 out List<string> diagnostics,
                 out HashSet<(string stage, string entryName)> outEntryPoints,
@@ -347,6 +352,12 @@ namespace UnitySlangShader
 
                 // Define user keywords
                 foreach (var keyword in keywords)
+                {
+                    request.AddPreprocessorDefine(keyword, "1");
+                }
+
+                // Define platform keywords
+                foreach (var keyword in platformKeywords)
                 {
                     request.AddPreprocessorDefine(keyword, "1");
                 }
@@ -459,62 +470,12 @@ namespace UnitySlangShader
                 sb.AppendLine("1");
             }
 
-            private static (ShaderCompilerPlatform, string) GetShaderCompilerPlatformAndKeyword(GraphicsDeviceType type)
-            {
-                switch (type)
-                {
-                    case GraphicsDeviceType.Direct3D11: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D11");
-                    case GraphicsDeviceType.OpenGLES2: return (ShaderCompilerPlatform.GLES20, "SHADER_API_GLES");
-                    case GraphicsDeviceType.OpenGLES3: return (ShaderCompilerPlatform.GLES3x, "SHADER_API_GLES3");
-                    case GraphicsDeviceType.PlayStation4: return (ShaderCompilerPlatform.PS4, "SHADER_API_PSSL");
-                    case GraphicsDeviceType.XboxOne: return (ShaderCompilerPlatform.XboxOneD3D11, "SHADER_API_XBOXONE");
-                    case GraphicsDeviceType.Metal: return (ShaderCompilerPlatform.Metal, "SHADER_API_METAL");
-                    case GraphicsDeviceType.OpenGLCore: return (ShaderCompilerPlatform.OpenGLCore, "SHADER_API_GLCORE");
-                    case GraphicsDeviceType.Direct3D12: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D12");
-                    case GraphicsDeviceType.Vulkan: return (ShaderCompilerPlatform.Vulkan, "SHADER_API_VULKAN");
-                    case GraphicsDeviceType.Switch: return (ShaderCompilerPlatform.Switch, "SHADER_API_SWITCH");
-                    case GraphicsDeviceType.XboxOneD3D12: return (ShaderCompilerPlatform.XboxOneD3D12, "SHADER_API_XBOXONE");
-                    case GraphicsDeviceType.GameCoreXboxOne: return (ShaderCompilerPlatform.GameCoreXboxOne, "SHADER_API_XBOXONE");
-                    case GraphicsDeviceType.GameCoreXboxSeries: return (ShaderCompilerPlatform.GameCoreXboxSeries, "SHADER_API_XBOXONE");
-                    case GraphicsDeviceType.PlayStation5: return (ShaderCompilerPlatform.PS5, "SHADER_API_PS5");
-                    case GraphicsDeviceType.PlayStation5NGGC: return (ShaderCompilerPlatform.PS5NGGC, "SHADER_API_PS5");
-                    default: return (ShaderCompilerPlatform.D3D, "SHADER_API_D3D11");
-                }
-            }
-
             private Dictionary<string, string> GetPredefinedDirectives()
             {
                 Dictionary<string, string> directives = new Dictionary<string, string>();
 
-                BuildTarget buildTarget = SlangShaderVariantTracker.IsCompilingForBuild ? SlangShaderVariantTracker.TargetForBuild : EditorUserBuildSettings.activeBuildTarget;
-                GraphicsDeviceType gfxType = PlayerSettings.GetGraphicsAPIs(buildTarget).FirstOrDefault();
-
                 // Base defines
                 directives.Add("SHADER_TARGET", "50"); // sm 5.0 assumed
-
-                // Platform defines
-                (ShaderCompilerPlatform compilerPlatform, string platformKw) = GetShaderCompilerPlatformAndKeyword(gfxType);
-                directives.Add(platformKw, "1");
-                
-                var builtinDefines = ShaderUtil.GetShaderPlatformKeywordsForBuildTarget(compilerPlatform, buildTarget);
-                foreach (BuiltinShaderDefine builtinDefine in builtinDefines)
-                {
-                    directives.Add(Enum.GetName(typeof(BuiltinShaderDefine), builtinDefine), "1");
-                }
-
-                if (buildTarget == BuildTarget.iOS ||
-                    buildTarget == BuildTarget.Android ||
-                    buildTarget == BuildTarget.tvOS)
-                {
-                    directives.Add("SHADER_API_MOBILE", "1");
-                }
-
-                if (gfxType == GraphicsDeviceType.OpenGLCore ||
-                    gfxType == GraphicsDeviceType.OpenGLES2 ||
-                    gfxType == GraphicsDeviceType.OpenGLES3)
-                {
-                    directives.Add("SHADER_TARGET_GLSL ", "1");
-                }
 
                 string unityVersion = Application.unityVersion.Replace(".", "");
                 for (int i = 0; i < unityVersion.Length; i++)
@@ -584,7 +545,7 @@ namespace UnitySlangShader
 
         private static HashSet<SlangShaderVariant> GetInitialVariants(AssetImportContext ctx, string assetPath, string shaderSource, ShaderNode shaderNode)
         {
-            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, new SlangShaderVariant[] { new SlangShaderVariant(new HashSet<string>()) }, shaderSource, shaderNode.Tokens);
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, new SlangShaderVariant[] { new SlangShaderVariant(EditorUserBuildSettings.activeBuildTarget, SystemInfo.graphicsDeviceType, new HashSet<string>()) }, shaderSource, shaderNode.Tokens);
             string proxySourceCode = editor.ApplyEdits(shaderNode);
 
             Shader variantInfoProxyShader = ShaderUtil.CreateShaderAsset(ctx, proxySourceCode, false);
