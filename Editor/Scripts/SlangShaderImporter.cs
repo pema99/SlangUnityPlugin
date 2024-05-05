@@ -546,7 +546,7 @@ namespace UnitySlangShader
         public SlangShaderDiagnostic[] Diagnostics;
 
         [SerializeField]
-        public string[] AdditionalIncludePaths;
+        public string[] AdditionalIncludePaths = new string[0];
 
         [SerializeField]
         public bool AddVariantsRequested = false;
