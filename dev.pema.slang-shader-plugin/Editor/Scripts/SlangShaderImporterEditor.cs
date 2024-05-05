@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AssetImporters;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -13,6 +15,7 @@ namespace UnitySlangShader
         private readonly string foldoutSourceID = $"{nameof(SlangShaderImporterEditor)}.foldoutSource";
         private readonly string foldoutGeneratedShaderID = $"{nameof(SlangShaderImporterEditor)}.foldoutGeneratedShader";
         private readonly string foldoutVariantsID = $"{nameof(SlangShaderImporterEditor)}.foldoutVariants";
+        private readonly string foldoutIncludePathsID = $"{nameof(SlangShaderImporterEditor)}.foldoutIncludePaths";
 
         private VisualElement root;
 
@@ -80,6 +83,70 @@ namespace UnitySlangShader
             variantsFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutVariantsID, false));
             variantsFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutVariantsID, evt.newValue));
             root.Add(variantsFoldout);
+
+            var applyButton = new Button() { text = "Apply changes" };
+            applyButton.style.marginTop = 6;
+            applyButton.style.minWidth = applyButton.style.width = 100;
+            applyButton.style.alignSelf = Align.FlexEnd;
+            applyButton.SetEnabled(false);
+            applyButton.clicked += () =>
+            {
+                EditorUtility.SetDirty(updatedImporter);
+                updatedImporter.SaveAndReimport();
+                applyButton.SetEnabled(false);
+            };
+
+            var includePathsWarning = new HelpBox("Specify additional paths to search for shader include files here.\n"+
+                "Some paths, such as those inside Packages, can not be automatically located, and must added here explicitly.", HelpBoxMessageType.Info);
+            var includePathsArea = new ListView(updatedImporter.AdditionalIncludePaths, -1, 
+                () =>
+                {
+                    var tf = new TextField();
+                    tf.RegisterValueChangedCallback(evt =>
+                    {
+                        updatedImporter.AdditionalIncludePaths[(int)tf.userData] = evt.newValue;
+                        applyButton.SetEnabled(true);
+                    });
+                    return tf;
+                },
+                (elem, idx) =>
+                {
+                    if (idx >= updatedImporter.AdditionalIncludePaths.Length)
+                    {
+                        System.Array.Resize(ref updatedImporter.AdditionalIncludePaths, idx + 1);
+                    }
+
+                    var tf = elem as TextField;
+                    tf.userData = idx;
+                    tf.SetValueWithoutNotify(updatedImporter.AdditionalIncludePaths[idx]);
+                });
+            includePathsArea.showAddRemoveFooter = true;
+            includePathsArea.reorderable = true;
+            includePathsArea.reorderMode = ListViewReorderMode.Animated;
+            includePathsArea.itemsAdded += (items) =>
+            {
+                applyButton.SetEnabled(true);
+            };
+            includePathsArea.itemsRemoved += (items) =>
+            {
+                var newArr = new List<string>();
+                for (int i = 0; i < includePathsArea.itemsSource.Count; i++)
+                {
+                    if (items.Contains(i))
+                        continue;
+
+                    newArr.Add(includePathsArea.itemsSource[i] as string);
+                }
+                updatedImporter.AdditionalIncludePaths = newArr.ToArray();
+                applyButton.SetEnabled(true);
+            };
+            var includePathsFoldout = new Foldout() { text = "Additional include paths" };
+            includePathsFoldout.contentContainer.style.marginLeft = 0;
+            includePathsFoldout.Add(includePathsWarning);
+            includePathsFoldout.Add(includePathsArea);
+            includePathsFoldout.SetValueWithoutNotify(SessionState.GetBool(foldoutIncludePathsID, false));
+            includePathsFoldout.RegisterValueChangedCallback(evt => SessionState.SetBool(foldoutIncludePathsID, evt.newValue));
+            root.Add(includePathsFoldout);
 
             var diagsLabel = new Label("Diagnostics");
             diagsLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -152,6 +219,8 @@ namespace UnitySlangShader
 
             root.Add(diagsLabel);
             root.Add(diagsArea);
+
+            root.Add(applyButton);
         }
 
         public override VisualElement CreateInspectorGUI()

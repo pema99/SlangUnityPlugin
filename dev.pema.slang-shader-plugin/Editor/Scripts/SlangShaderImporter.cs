@@ -126,14 +126,22 @@ namespace UnitySlangShader
             public HashSet<string> DependencyFiles = new HashSet<string>();
 
             private string filePath = string.Empty;
+            private string[] includePaths;
 
             private SlangShaderVariant[] variantsToGenerate;
             private HashSet<string> allKeywords;
 
-            public ShaderLabSlangEditor(string filePath, SlangShaderVariant[] variantsToGenerate, string source, List<SLToken> tokens)
+            public ShaderLabSlangEditor(string filePath, string[] additionalIncludePaths, SlangShaderVariant[] variantsToGenerate, string source, List<SLToken> tokens)
                 : base(source, tokens)
             {
                 this.filePath = filePath;
+
+                string cgIncludePath = $"{EditorApplication.applicationContentsPath}/CGIncludes";
+                string basePath = Directory.GetParent(Application.dataPath).FullName;
+                this.includePaths = additionalIncludePaths
+                    .Concat(new string[] { cgIncludePath, basePath })
+                    .ToArray();
+
                 this.variantsToGenerate = variantsToGenerate;
 
                 // Find the entire space of keywords we care about
@@ -235,9 +243,6 @@ namespace UnitySlangShader
                 var pragmas = ExtractPragmasFromCode(fullCodeWithLineStart);
                 var entryPoints = FindEntryPointPragmas(pragmas);
                 Dictionary<string, string> predefinedDirectives = GetPredefinedDirectives();
-                string cgIncludePath = $"{EditorApplication.applicationContentsPath}/CGIncludes";
-                string basePath = Directory.GetParent(Application.dataPath).FullName;
-                string[] includePaths = new string[] { cgIncludePath, basePath };
 
                 // Compile each variant
                 var perThreadResult = new string[variantsToGenerate.Length];
@@ -541,11 +546,14 @@ namespace UnitySlangShader
         public SlangShaderDiagnostic[] Diagnostics;
 
         [SerializeField]
+        public string[] AdditionalIncludePaths;
+
+        [SerializeField]
         public bool AddVariantsRequested = false;
 
         private static HashSet<SlangShaderVariant> GetInitialVariants(AssetImportContext ctx, string assetPath, string shaderSource, ShaderNode shaderNode)
         {
-            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, new SlangShaderVariant[] { new SlangShaderVariant(EditorUserBuildSettings.activeBuildTarget, SystemInfo.graphicsDeviceType, new HashSet<string>()) }, shaderSource, shaderNode.Tokens);
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(assetPath, new string[] { }, new SlangShaderVariant[] { new SlangShaderVariant(EditorUserBuildSettings.activeBuildTarget, SystemInfo.graphicsDeviceType, new HashSet<string>()) }, shaderSource, shaderNode.Tokens);
             string proxySourceCode = editor.ApplyEdits(shaderNode);
 
             Shader variantInfoProxyShader = ShaderUtil.CreateShaderAsset(ctx, proxySourceCode, false);
@@ -599,7 +607,7 @@ namespace UnitySlangShader
             }
             EditorUtility.SetDirty(this);
 
-            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, GeneratedVariants, shaderSource, shaderNode.Tokens);
+            ShaderLabSlangEditor editor = new ShaderLabSlangEditor(ctx.assetPath, AdditionalIncludePaths, GeneratedVariants, shaderSource, shaderNode.Tokens);
             GeneratedSourceCode = editor.ApplyEdits(shaderNode);
             foreach (var slangDiag in editor.Diagnostics)
             {
