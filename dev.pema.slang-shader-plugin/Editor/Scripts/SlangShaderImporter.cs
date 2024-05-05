@@ -221,7 +221,7 @@ namespace UnitySlangShader
                         continue;
 
                     if (pragma[0].StartsWith("multi_compile") ||
-                        pragma[0] == "shader_feature" ||
+                        pragma[0].StartsWith("shader_feature") ||
                         pragma[0] == "skip_variants" ||
                         pragma[0] == "only_renderers" ||
                         pragma[0] == "exclude_renderers" ||
