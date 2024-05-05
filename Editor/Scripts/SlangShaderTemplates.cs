@@ -8,10 +8,16 @@ namespace UnitySlangShader
 {
     public static class SlangShaderTemplates
     {
-        [MenuItem("Assets/Create/Shader/Slang/Unlit Slang Shader")]
+        [MenuItem("Assets/Create/Shader/Slang/Unlit Slang Shader", false, priority: -1)]
         private static void CreateUnlitSlangShader()
         {
             CreateShader("NewUnlitSlangShader.txt", "NewUnlitSlangShader");
+        }
+
+        [MenuItem("Assets/Create/Shader/Slang/Raymarching Slang Shader")]
+        private static void CreateRaymarchingShader()
+        {
+            CreateShader("SlangRaymarchingShader.txt", "SlangRaymarchingShader");
         }
 
         private static void CreateShader(string templatePath, string name)

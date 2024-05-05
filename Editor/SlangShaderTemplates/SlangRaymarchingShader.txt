@@ -1,0 +1,242 @@
+Shader "Unlit/__SHADERNAME__"
+{
+    Properties
+    {
+        _Iterations ("Max iterations", Float) = 128
+        _MaxDist ("Max distance", Float) = 50
+        _MinDist ("Min distance", Float) = 0.001
+    }
+    SubShader
+    {
+        Tags { "Queue"="Transparent" "DisableBatching"="True" }
+
+        Pass
+        {
+            Cull Front
+
+            CGPROGRAM
+            #pragma target 5.0
+            #include "UnityCG.cginc"
+
+            bool _WorldSpace; 
+            float _Iterations; 
+            float _MinDist;    
+            float _MaxDist;    
+
+            struct v2f
+            {
+                float4 vertex : SV_POSITION;
+                float3 camera_position : TEXCOORD0;  
+                float3 surface_position : TEXCOORD1; 
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            [shader("vertex")]
+            v2f vert (appdata_base v)
+            {
+                v2f o;
+                
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+                
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.camera_position = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos, 1)).xyz;
+                o.surface_position = v.vertex.xyz;
+                
+                return o;
+            }
+
+            // Highlighted feature: Interfaces
+            interface ISignedDistanceFunction
+            {
+                [Differentiable]
+                float distance(float3 p);
+            }
+
+            struct Sphere : ISignedDistanceFunction
+            {
+                float radius;
+
+                // Highlighted feature: Constructors
+                __init(float radius)
+                {
+                    this.radius = radius;
+                }
+
+                [Differentiable]
+                float distance(float3 p)
+                {
+                    return length(p) - radius;
+                }
+            }
+
+            struct Torus : ISignedDistanceFunction
+            {
+                float2 size;
+
+                __init(float2 size)
+                {
+                    this.size = size;
+                }
+
+                [Differentiable]
+                float distance(float3 p)
+                {
+                    let q = float2(length(p.xz) - size.x, p.y);
+                    return length(q) - size.y;
+                }
+            }
+            
+            // Highlighted feature: Heterogeneous arrays
+            static const ISignedDistanceFunction scene[] =
+            {
+                Sphere(0.25),
+                Torus(float2(0.35, 0.08)),
+            };
+
+            [Differentiable]
+            float scene_distance(float3 position)
+            {
+                var dist = _MaxDist;
+                [MaxIters(16)]
+                for (int i = 0; i < scene.getCount(); i++)
+                {
+                    dist = operator_smooth_union(dist, scene[i].distance(position), 0.05);
+                }
+                return dist;
+            }
+
+            [Differentiable]
+            float operator_smooth_union(float d1, float d2, float k)
+            {
+                let h = saturate(0.5 + 0.5 * (d2-d1) / k);
+                return lerp(d2, d1, h) - k * h * (1.0 - h);
+            }
+
+            // Highlighted feature: Autodifferentation
+            float3 normal(float3 position)
+            {
+                // Use reverse-mode autodiff to calculate the gradient
+                var diffPosition = diffPair(position);
+                bwd_diff(scene_distance)(diffPosition, 1);
+                let gradient = normalize(diffPosition.d);
+                return gradient;
+
+                // Just to demonstrate: We could also have used forward mode.
+                /*let diffX = diffPair(position, float3(1, 0, 0));
+                let diffY = diffPair(position, float3(0, 1, 0));
+                let diffZ = diffPair(position, float3(0, 0, 1));
+
+                float3 gradient = float3(
+                    fwd_diff(scene_distance)(diffX).d,
+                    fwd_diff(scene_distance)(diffY).d,
+                    fwd_diff(scene_distance)(diffZ).d
+                );
+
+                return normalize(gradient);*/
+            }
+
+            struct MarchResult
+            {
+                float distance;
+                int steps;
+
+                __init(float distance, int steps)
+                {
+                    this.distance = distance;
+                    this.steps = steps;
+                }
+            }
+
+            // Highlighted feature: Enums
+            enum StepResult
+            {
+                Continue,
+                Hit,
+                Miss
+            }
+
+            struct MarchIterator
+            {
+                MarchResult result;
+
+                float3 ray_origin;
+                float3 ray_direction;
+
+                // Highlighted feature: Properties
+                property int steps { get { return result.steps; } }
+
+                __init(float3 ray_origin, float3 ray_direction)
+                {
+                    this.ray_origin = ray_origin;
+                    this.ray_direction = ray_direction;
+                    this.result = MarchResult(0, 0);
+                }
+
+                // Highlighted feature: Mutating member functions
+                [mutating]
+                StepResult step()
+                {
+                    float3 current_position = ray_origin + ray_direction * result.distance;
+                    float current_distance = scene_distance(current_position);
+                    result.distance += current_distance;
+                    result.steps++;
+
+                    if (result.distance > _MaxDist)
+                        return StepResult.Miss;
+                    else if (current_distance < _MinDist)
+                        return StepResult.Hit;
+                    else
+                        return StepResult.Continue;
+                }
+            }
+
+            // Highlighted feature: Optional types
+            Optional<MarchResult> march(float3 ray_origin, float3 ray_direction)
+            {
+                var iter = MarchIterator(ray_origin, ray_direction);
+
+                while (iter.steps < _Iterations)
+                {
+                    switch (iter.step())
+                    {
+                        case StepResult.Hit:
+                            return Optional<MarchResult>(iter.result);
+                        case StepResult.Miss:
+                            return none;
+                        case StepResult.Continue:
+                            break;
+                    }
+                }
+                
+                return Optional<MarchResult>(iter.result);
+            }
+
+            [shader("fragment")]
+            float4 frag (v2f i, out float depth : SV_Depth) : SV_Target
+            {
+                let ray_origin = i.camera_position;
+                let ray_direction = normalize(i.surface_position - i.camera_position);
+                
+                let result = march(ray_origin, ray_direction);
+                if (result == none)
+                {
+                    discard;
+                }
+
+                let hit_position = ray_origin + ray_direction * result.value.distance;
+                let hit_normal = normal(hit_position);
+                
+                let clip_position = UnityObjectToClipPos(float4(hit_position, 1.0));
+                depth = clip_position.z / clip_position.w; 
+                
+                let base_color = hit_normal * 0.5 + 0.5; 
+                let ambient_occlusion = 1.0 - (result.value.steps / _Iterations);
+                
+                return float4(base_color * ambient_occlusion, 1.0);
+            }
+            ENDCG
+        }
+    }
+}
