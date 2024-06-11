@@ -10,6 +10,11 @@ Either clone the repo and add it as a local package, or add the package directly
 
 ![image](https://github.com/pema99/SlangUnityPlugin/assets/11212115/4fb0045e-a1f3-4f46-8c56-9ddc2ed4ee46)
 
+Alternatively, if you are VRChat Creator Companion user:
+- [Click here](https://pema99.github.io/vpm/redirect.html).
+- When prompted, open the redirect with VCC.
+- Add the repository. You can now add GITweaks to your projects as normal.
+
 # Caveats
 
 This plugin was mostly made for me to play around with the Slang language inside of Unity, and at some point out of stubbornness. Adding support for a new shading language entirely from within user code, isn't exactly a supported usecase, and for this reason, the plugin makes use of several undocumented features and engine hacks/tricks. It should "just work" for most use cases, but there are some noteworthy unsolved caveats:
