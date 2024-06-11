@@ -13,7 +13,7 @@ Either clone the repo and add it as a local package, or add the package directly
 Alternatively, if you are VRChat Creator Companion user:
 - [Click here](https://pema99.github.io/vpm/redirect.html).
 - When prompted, open the redirect with VCC.
-- Add the repository. You can now add GITweaks to your projects as normal.
+- Add the repository. You can now add the package to your projects as normal.
 
 # Caveats
 
